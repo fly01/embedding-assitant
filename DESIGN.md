@@ -19,13 +19,14 @@
 - Goals: give current and future applications one high-standard embedded AI assistant instead of repeatedly rebuilding chat, streaming, tools, action confirmation, memory, attachments, and recovery.
 - Goals: support progressive adoption from a text-only panel to configuration-driven domain tools and Actions, generated integrations, multimodal input, context management, retrieval, Memory, and optional custom plugins.
 - Goals: provide both a production-ready default experience and a headless interaction layer.
+- Goals: provide one Privacy Center for assistant data inventory, export, deletion, retention visibility, and derived-data cleanup across core, official packages, integrations, and plugins.
 - Non-goals: third-party plugin marketplace, arbitrary online hot installation, browser automation, arbitrary code execution, payments/transfers, background autonomous agents, or a shared cross-domain business schema.
-- Success signals: a new Host can embed the basic assistant in one working day; a standard CRUD-style application can add a confirmed Action through an approved Integration Manifest without custom plugin code; a custom plugin can still add specialized behavior without changing core; no model, generated integration, or plugin can bypass Host authorization and transaction boundaries.
+- Success signals: a new Host can embed the basic assistant in one working day; a standard CRUD-style application can add a confirmed Action through an approved Integration Manifest without custom plugin code; a custom plugin can still add specialized behavior without changing core; users can inventory/export/delete registered assistant data from one place; no model, generated integration, or plugin can bypass Host authorization and transaction boundaries.
 
 ## Personas and jobs
 
 - Primary personas: application developers embedding the assistant, maintainers reviewing generated Integration Manifests, plugin authors adding specialized capabilities, and product users asking the assistant to understand or act on current application context.
-- User jobs: ask and follow up, attach an image or file, dictate editable text, understand visible activity, review proposed changes, confirm or revise actions, and recover from interrupted work.
+- User jobs: ask and follow up, attach an image or file, send a voice message, dictate editable text, understand visible activity, review proposed changes, confirm or revise Actions, inspect retention, export or delete assistant data, and recover from interrupted work.
 - Developer jobs: register tools, expose bounded context, declare permissions, implement host-side actions, provide domain renderers, theme the assistant, inspect event streams, and test upgrades without a live model.
 - Key contexts of use: mobile-first private applications, authenticated user or workspace scopes, long conversations, slow networks, and workflows where AI-proposed writes require confirmation.
 
@@ -45,6 +46,7 @@
 - Principle 6: plugins extend declared contracts and slots; they cannot bypass host data access, permissions, transactions, or audit.
 - Principle 7: single and multiple Conversation modes share one Runtime, while `lite`, `balanced`, and `durable` context profiles are presets over one Context Compiler rather than separate implementations.
 - Principle 8: every Host supplies an integration boundary, but custom Domain Plugin code is optional; direct embed, declarative Manifest, generated integration, and custom plugin are progressive levels over the same contracts.
+- Principle 9: Privacy Center is one mandatory control surface for all assistant-managed data; source deletion cascades to registered derivatives, while Host-owned business records and required audit retention are disclosed and handed off rather than silently deleted.
 - Tradeoffs: MVP prioritizes a portable protocol, a Python/FastAPI reference runtime, and one polished Vue 3 implementation. SwiftUI and other UI-framework adapters follow the same protocol later.
 
 ## Visual language
@@ -59,8 +61,8 @@
 ## Components
 
 - Existing patterns to preserve as behavioral evidence: streaming Markdown, sequence-stable paginated history, grouped message-time dividers, multimodal composition, playable voice messages, editable live dictation, visible tool activity, resumable streams, attachment previews, and editable confirm/cancel action cards.
-- New/changed components: headless assistant store, assistant shell, conversation thread, `MessageTimeDivider`, message-part renderers, multimodal composer, `VoiceMessageBubble`, `LiveDictationControl`, `TranscriptionStatus`, reasoning disclosure, tool activity, citations, action workspace, error recovery, plugin slots, host-context badges, Integration Manifest editor/review, generated-risk report, Context Profile settings, Context Manifest inspector, and developer inspectors.
-- Variants and states: inline, drawer, side panel, full-screen tab, and floating panel; signed out, disabled by Host, loading history, streaming, interrupted, offline, uploading, recording voice message, voice message transcribing, voice transcription failed, live dictation loading/listening/partial/final, permission denied, Integration Manifest draft, review blocked, plugin disabled, Action blocked by plugin, reasoning unavailable, raw trace visible, context profile preparing, context fallback active, context rebuild failed, awaiting confirmation, applying, partial failure, applied, cancelled, archived, and undo available.
+- New/changed components: headless assistant store, assistant shell, conversation thread, `MessageTimeDivider`, message-part renderers, multimodal composer, `VoiceMessageBubble`, `LiveDictationControl`, `TranscriptionStatus`, reasoning disclosure, tool activity, citations, action workspace, `PrivacyCenter`, `PrivacyResourceList`, `DeletionImpactPreview`, `PrivacyJobStatus`, error recovery, plugin slots, host-context badges, Integration Manifest editor/review, generated-risk report, Context Profile settings, Context Manifest inspector, and developer inspectors.
+- Variants and states: inline, drawer, side panel, full-screen tab, and floating panel; signed out, disabled by Host, loading history, streaming, interrupted, offline, uploading, recording voice message, voice message transcribing, voice transcription failed, live dictation loading/listening/partial/final, permission denied, privacy inventory loading, export preparing/ready/failed, deletion preview/awaiting-confirmation/running/partial/completed/failed, unresolved processor, retention restricted, Integration Manifest draft, review blocked, plugin disabled, Action blocked by plugin, reasoning unavailable, raw trace visible, context profile preparing, context fallback active, context rebuild failed, awaiting confirmation, applying, partial failure, applied, cancelled, archived, and undo available.
 - Token/component ownership: the framework owns semantic token names and slot contracts; host applications override values or renderers without forking runtime state.
 
 ### Message chronology and time grouping
@@ -121,12 +123,22 @@ Integration authoring and generated-risk review are developer/maintainer surface
 
 If a contributing plugin is disabled, its not-yet-applying Action card remains readable and changes to `blocked_plugin_disabled`. Confirm and edit controls are disabled; the card explains compatible re-enable, manual cancellation, and archival. Re-enabling never resumes execution automatically—it first reruns compatibility, permission, payload, and schema validation. Applied history remains readable through a generic renderer.
 
+### Privacy Center
+
+- Present user-understandable categories for Conversations/Messages, attachments, voice-message audio, transcript revisions, Memory, retained raw traces, context artifacts, Pending Actions, integration/plugin data, and restricted Host/audit records.
+- Each category shows owner, scope, item count or size where available, retention policy, export support, deletion support, and downstream effects. Internal indexes and caches appear as derived consequences rather than confusing standalone user data.
+- Export uses private authenticated delivery and includes a manifest of included categories, schema versions, omissions, and retention restrictions.
+- Deletion starts with an impact preview, then destructive confirmation. The progress surface shows per-category and per-processor status and never collapses partial completion into success.
+- Removing source content removes or invalidates dependent transcripts, summaries, Working Ledger entries, retrieval indexes, Context Manifests, caches, and extension data. Host-owned committed records link to Host controls instead of being silently deleted.
+- Required audit or legal retention is explicit: show retained fields, reason, owner, and expiry. A minimal tombstone must not expose deleted content.
+- Plugin disablement or removal cannot strand data-management controls. Stable Host or migration handlers keep export/deletion available until the declared retention period ends.
+
 ## Accessibility
 
 - Target standard: WCAG 2.2 AA for the default web component kit.
-- Keyboard/focus behavior: composer, voice-mode switch, record/stop, voice-message playback, transcript retry/correction, attachment controls, stop/regenerate, reasoning disclosure, tool details, citations, and Action controls must be reachable, labelled, and visibly focused.
+- Keyboard/focus behavior: composer, voice-mode switch, record/stop, voice-message playback, transcript retry/correction, attachment controls, Privacy Center inventory/export/delete controls, stop/regenerate, reasoning disclosure, tool details, citations, and Action controls must be reachable, labelled, and visibly focused.
 - Contrast/readability: permission, confirmation, and error states never rely on color alone.
-- Screen-reader semantics: time dividers expose full localized time, voice messages expose duration and transcription status, live dictation announces state without reading every partial replacement, streaming and tool status use restrained live regions, reasoning disclosures expose their current level and expanded state, raw trace does not continuously flood a live region, and Action cards announce current state and available operations.
+- Screen-reader semantics: time dividers expose full localized time, voice messages expose duration and transcription status, live dictation announces state without reading every partial replacement, Privacy Jobs announce category progress and partial/unresolved outcomes without flooding, streaming and tool status use restrained live regions, reasoning disclosures expose their current level and expanded state, raw trace does not continuously flood a live region, and Action cards announce current state and available operations.
 - Reduced motion and sensory considerations: waveform, loading, and streaming animations simplify or pause under reduced-motion preferences while recording state remains unambiguous.
 
 ## Responsive behavior
@@ -137,17 +149,17 @@ If a contributing plugin is disabled, its not-yet-applying Action card remains r
 
 ## Interaction states
 
-- Loading: distinguish history loading, sending, model streaming, tool execution, voice-message upload/batch transcription, live-dictation model preparation/streaming transcription, file processing, and Action application.
+- Loading: distinguish history loading, sending, model streaming, tool execution, voice-message upload/batch transcription, live-dictation model preparation/streaming transcription, file processing, Privacy inventory/export/deletion jobs, and Action application.
 - Empty: show host-provided starter prompts and current-context hints, never fabricated conversation content.
-- Error: preserve the draft, playable voice Message, partial dictation text, and safe attachment metadata as applicable; explain whether upload retry, transcription retry/correction, reconcile, edit, cancellation, archival, compatible plugin re-enable, or context-profile fallback is available.
-- Success: applied action cards show the user-facing outcome and invoke an explicit host refresh callback.
+- Error: preserve the draft, playable voice Message, partial dictation text, and safe attachment metadata as applicable; Privacy Jobs retain item-level success/failure and unresolved-processor evidence; explain whether upload retry, transcription retry/correction, privacy retry, reconcile, edit, cancellation, archival, compatible plugin re-enable, or context-profile fallback is available.
+- Success: applied Action cards show the user-facing outcome and invoke an explicit Host refresh callback; Privacy Jobs summarize exported/deleted categories and remaining restrictions without claiming more than processors confirmed.
 - Disabled: expose the reason visually and to assistive technology.
 - Offline/slow network: retain existing messages, stop indeterminate loading, and offer bounded reconnection or retry.
 
 ## Content voice
 
 - Tone: concise, calm, and transparent. The first reference locale is Simplified Chinese, but all default copy MUST be replaceable through localization resources; domain terminology comes from the Host Integration Manifest or optional plugin.
-- Terminology: “助手”, “语音消息”, “实时转写”, “正在录音”, “正在转写”, “转写失败”, “正在思考”, “正在查看”, “待确认”, “确认”, “修改”, “取消”, “已应用”, “恢复回复”, “引用来源”.
+- Terminology: “助手”, “隐私中心”, “导出助手数据”, “删除助手数据”, “删除影响”, “部分完成”, “保留期限”, “语音消息”, “实时转写”, “正在录音”, “正在转写”, “转写失败”, “正在思考”, “正在查看”, “待确认”, “确认”, “修改”, “取消”, “已应用”, “恢复回复”, “引用来源”.
 - Microcopy rules: below developer level, describe user-facing activity and outcomes rather than internal function names. `raw_trace` is labelled as verbatim provider reasoning, not verified fact or framework-authored explanation. Integration review surfaces distinguish “generated candidate”, “approved mapping”, “blocked risk”, and “active capability”; a disabled-plugin Action never appears cancelled or executable.
 
 ## Implementation constraints
@@ -155,8 +167,8 @@ If a contributing plugin is disabled, its not-yet-applying Action card remains r
 - Framework/styling system: MVP reference client uses Vue 3, TypeScript, and a headless store; the reference backend uses Python/FastAPI. JSON Schema and the event protocol are the cross-language source of truth.
 - Design-token constraints: semantic CSS variables and typed slot props; no application-specific palette in framework packages.
 - Performance constraints: paginated or virtualized history, bounded attachment previews, stream backpressure, profile-driven token budgeting, one Context Compiler contract, Context Manifest diagnostics, and no full-resolution image decoding in message lists.
-- Compatibility constraints: authenticated private-data Hosts, generic adapters backed by approved configuration, review-gated generated integrations, resumable event streams, Host-controlled media URLs, batch/streaming and device/server ASR adapters, explicit fallback disclosure, mobile Safari attachment behavior, and optional custom plugins installed at release time but enabled or disabled at runtime.
-- Test/screenshot expectations: contract fixtures, reducer tests, five-minute message-time grouping and pagination recomputation, both voice modes and ASR execution locations, audio retention/privacy, transcription failure/correction, all four Host integration levels, generated-risk review, `blocked_plugin_disabled` Actions, generic historical renderer fallback, single/multiple Conversation modes, `lite`/`balanced`/`durable` context profiles, profile preparation/fallback/failure states, all six reasoning disclosure levels, trace-unavailable and authorization states, component interaction and accessibility tests, mobile/desktop visual smoke checks, disconnect recovery, permission denial, and Action idempotency.
+- Compatibility constraints: authenticated private-data Hosts, registered Privacy Resources and export/delete/invalidation handlers, generic adapters backed by approved configuration, review-gated generated integrations, resumable event streams, Host-controlled media URLs, batch/streaming and device/server ASR adapters, explicit fallback disclosure, mobile Safari attachment behavior, and optional custom plugins installed at release time but enabled or disabled at runtime.
+- Test/screenshot expectations: contract fixtures, reducer tests, Privacy inventory/export/deletion/partial/retention states and derivative invalidation, five-minute message-time grouping and pagination recomputation, both voice modes and ASR execution locations, audio retention/privacy, transcription failure/correction, all four Host integration levels, generated-risk review, `blocked_plugin_disabled` Actions, generic historical renderer fallback, single/multiple Conversation modes, `lite`/`balanced`/`durable` context profiles, profile preparation/fallback/failure states, all six reasoning disclosure levels, trace-unavailable and authorization states, component interaction and accessibility tests, mobile/desktop visual smoke checks, disconnect recovery, permission denial, and Action idempotency.
 
 ## Open questions
 

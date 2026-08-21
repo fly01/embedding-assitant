@@ -41,6 +41,7 @@ The framework manages assistant behavior. The host application keeps control of 
 - **Progressive Host integration:** applications can start with direct embed, move to a declarative or generated Host Integration Manifest, and write a custom Domain Plugin only when configuration cannot express the required behavior safely.
 - **Chat-native chronology:** sequence-stable Messages use localized time dividers only at the first visible Message, a date boundary, or a configurable inactivity gap that defaults to five minutes.
 - **Two voice modes:** persisted playable `voice_message` input uses backend batch transcription, while `live_dictation` uses on-device or disclosed server streaming ASR to fill an editable draft.
+- **Unified Privacy Center:** users can inventory, export, and delete registered assistant data from one place, with explicit retention limits and derived-data cleanup.
 - **Controlled plugins:** plugins are installed during a release and may be enabled or disabled at runtime; arbitrary remote code installation is out of scope for the MVP.
 
 ## Architecture
@@ -118,6 +119,16 @@ Every level retains the Host Adapter authority boundary. Generated write mapping
 - `live_dictation` streams partial transcription into the Composer, remains editable, never auto-sends, and does not create or retain an audio Message.
 - ASR adapters may be batch or streaming and device-side or server-side. A fallback that moves audio off device must be disclosed before upload.
 
+### Privacy Center
+
+Privacy Center is part of the mandatory Safety & Governance baseline. It covers Conversations and Messages, attachments, voice-message audio, transcript revisions, Memory, retained raw traces, context artifacts, Pending Actions, and declared integration/plugin data.
+
+- Exports use private authenticated delivery and include a machine-readable category/schema manifest.
+- Deletion shows an impact preview, requires confirmation, and removes or invalidates registered derived summaries, ledgers, indexes, manifests, and caches.
+- Host-owned committed business records link to Host deletion controls rather than being silently deleted.
+- Required audit or legal retention is disclosed with retained fields, reason, owner, and expiry.
+- Partial or unresolved processors remain visible and retryable; the framework never reports full success without confirmation.
+
 ## Progressive adoption
 
 A host can adopt Framed Assistant incrementally:
@@ -143,6 +154,7 @@ No stage requires the host to surrender authorization or transaction control.
 - Raw provider reasoning traces are disabled by default and require explicit Host policy, viewer authorization, and a separate retention decision.
 - Voice-message audio is private persisted user content under Host retention policy; live-dictation audio is ephemeral by default and cannot move from device to server through a silent fallback.
 - Integration Generator output remains draft until unresolved security and transaction semantics are reviewed; production runtime discovery cannot activate undeclared Host operations.
+- Privacy inventory, exports, and deletion jobs require actor plus Host-scope authorization; plugins cannot persist undeclared data or orphan export/deletion handlers when disabled or removed.
 
 Security-sensitive behavior is defined normatively in the [Security and privacy section](docs/mvp-spec.md#security-and-privacy).
 

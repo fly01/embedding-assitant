@@ -40,6 +40,7 @@ The MVP MUST:
 8. Allow modules to be implemented and tested independently against shared fixtures.
 9. Support configurable single- or multi-conversation topology and configurable context profiles without creating separate runtimes.
 10. Allow a standard CRUD-style application to integrate without hand-writing a Domain Plugin.
+11. Provide one Privacy Center for inventory, export, deletion, retention visibility, and derived-data invalidation across all assistant-managed data.
 
 ## Non-goals
 
@@ -87,6 +88,8 @@ The MVP does not include:
 | Voice message | Persisted playable audio Message that is transcribed by a backend batch-ASR adapter before its transcript enters the assistant Run. |
 | Live dictation | Streaming or incremental ASR that fills an editable Composer draft; audio is not sent as a playable Message. |
 | Message time divider | Derived UI label inserted before a message group when the first visible message, local-date boundary, or configured inactivity threshold requires a new time anchor. |
+| Privacy Resource | Registered assistant-managed data category with owner, scope, retention, export, deletion, and derived-artifact metadata. |
+| Privacy Job | Idempotent, resumable export or deletion workflow with preview, confirmation, progress, partial-result, and completion state. |
 
 ## Architecture
 
@@ -187,6 +190,8 @@ The Integration Generator runs only during development or build workflows. It MA
 | `AuditEvent` | Security and debugging evidence | actor, operation, decision, redaction metadata |
 | `HostIntegrationState` | Active declarative/generated integration | Manifest version, review status, unresolved risks, adapter bindings |
 | `PluginState` | Installed plugin activation state | plugin version, contract range, configuration, migration state |
+| `PrivacyResource` | User-visible assistant data category | owner, scope, retention, processor, export/delete capabilities |
+| `PrivacyJob` | Export or deletion workflow | request scope, preview, confirmation, status, item results, audit reference |
 
 `Message` records are authoritative conversation history. Summaries, search indexes, and frontend caches are derived data.
 
@@ -221,6 +226,7 @@ interface AssistantEvent<TPayload = unknown> {
     | "transcription.delta"
     | "transcription.completed"
     | "transcription.failed"
+    | "privacy.job.updated"
     | "attachment.updated"
     | "tool.requested"
     | "tool.started"
@@ -311,6 +317,11 @@ The protocol is transport-neutral. The reference server exposes:
 - `POST /v1/assistant/actions/{action_id}/cancel`
 - `POST /v1/assistant/actions/{action_id}/undo`
 - `GET /v1/assistant/capabilities`
+- `GET /v1/assistant/privacy/resources`
+- `POST /v1/assistant/privacy/exports`
+- `POST /v1/assistant/privacy/deletions/preview`
+- `POST /v1/assistant/privacy/deletions`
+- `GET /v1/assistant/privacy/jobs/{job_id}`
 
 The reference implementation uses Server-Sent Events for run events. A run request MUST persist the user message before model execution and return `run_id` plus the latest sequence number. Clients resume with `after_seq`.
 
@@ -426,9 +437,9 @@ Essentials includes date/time/time-zone operations, a calculator, unit conversio
 
 Custom Domain Plugins are optional and are installed at release time through the Host build or package manager. Installed plugins MAY be enabled or disabled at runtime through Host configuration. The MVP MUST NOT download or execute arbitrary remote plugin code.
 
-**Responsibilities:** Integration Manifest and Plugin Manifest validation, protocol compatibility, dependency checks, review state, unresolved-risk gates, permission declarations, configuration schema, generic and custom renderer registration, migration preflight, enable/disable state, and fail-closed activation.
+**Responsibilities:** Integration Manifest and Plugin Manifest validation, protocol compatibility, dependency checks, review state, unresolved-risk gates, permission declarations, configuration schema, Privacy Resource plus export/delete/invalidation handler registration, generic and custom renderer registration, migration preflight, enable/disable state, and fail-closed activation.
 
-**Acceptance:** draft or unresolved Integration Manifests do not activate write mappings; incompatible plugins do not activate; disabled plugins expose no new tools or Actions; a renderer failure uses a safe generic renderer; upgrade preflight leaves the previously deployed version active on failure; historical content remains readable without an active custom renderer.
+**Acceptance:** draft or unresolved Integration Manifests do not activate write mappings; integrations or plugins that persist undeclared data or lack required export/delete/invalidation handlers do not activate; incompatible plugins do not activate; disabled plugins expose no new tools or Actions; a renderer failure uses a safe generic renderer; upgrade preflight leaves the previously deployed version active on failure; historical content remains readable without an active custom renderer.
 
 ### M5. Frontend Headless SDK
 
@@ -442,9 +453,9 @@ Custom Domain Plugins are optional and are installed at release time through the
 
 **Purpose:** provide an opinionated interface that is ready to ship and remains themeable.
 
-Required components include `AssistantShell`, `ConversationThread`, `MessageTimeDivider`, `UserMessage`, `AssistantMessage`, `StreamingMarkdown`, `ThinkingDisclosure`, `ToolActivity`, `Composer`, `VoiceMessageBubble`, `LiveDictationControl`, `TranscriptionStatus`, `ActionCard`, `CitationList`, `AttachmentPreview`, `ErrorBanner`, `StopButton`, `RegenerateButton`, and plugin renderer slots.
+Required components include `AssistantShell`, `ConversationThread`, `MessageTimeDivider`, `UserMessage`, `AssistantMessage`, `StreamingMarkdown`, `ThinkingDisclosure`, `ToolActivity`, `Composer`, `VoiceMessageBubble`, `LiveDictationControl`, `TranscriptionStatus`, `ActionCard`, `CitationList`, `AttachmentPreview`, `PrivacyCenter`, `PrivacyJobStatus`, `ErrorBanner`, `StopButton`, `RegenerateButton`, and plugin renderer slots.
 
-**Acceptance:** panel, drawer, inline, and full-page modes work at mobile and desktop widths; keyboard and screen-reader paths cover every operation; the five-minute default time-grouping rule survives pagination without moving the reading anchor; both voice modes expose distinct states and privacy expectations; internal tool identifiers remain hidden below developer level; all six disclosure levels render distinctly; `raw_trace` shows the full provider-supplied trace when available and an explicit unavailable state otherwise.
+**Acceptance:** panel, drawer, inline, and full-page modes work at mobile and desktop widths; keyboard and screen-reader paths cover every operation; the five-minute default time-grouping rule survives pagination without moving the reading anchor; both voice modes expose distinct states and privacy expectations; Privacy Center inventory, preview, export, deletion, partial failure, and retention-limit states are accessible; internal tool identifiers remain hidden below developer level; all six disclosure levels render distinctly; `raw_trace` shows the full provider-supplied trace when available and an explicit unavailable state otherwise.
 
 ### M7. Multimodal Input Pack
 
@@ -525,15 +536,15 @@ blocked_plugin_disabled -> cancelled | archived   (manual resolution)
 
 **Purpose:** enforce the minimum security and observability baseline.
 
-**Responsibilities:** permission classes, data scopes, sensitive-data redaction, cost and rate limits, timeouts, maximum tool calls, audit events, and integration/plugin permission checks.
+**Responsibilities:** permission classes, data scopes, sensitive-data redaction, cost and rate limits, timeouts, maximum tool calls, audit events, integration/plugin permission checks, Privacy Resource registry, export orchestration, deletion preview and confirmation, derived-artifact invalidation, retention visibility, and Privacy Job recovery.
 
-**Acceptance:** minimum permission enforcement, write blocking, redaction, and audit contracts cannot be disabled; advanced quotas are configurable; audit records preserve debugging metadata without storing credentials, raw private attachments, or unredacted context.
+**Acceptance:** minimum permission enforcement, write blocking, redaction, Privacy Center, and audit contracts cannot be disabled; advanced quotas are configurable; every assistant-managed data category is registered or fails conformance; export and deletion jobs are scoped, idempotent, resumable, and report partial results; audit records preserve debugging metadata without storing credentials, raw private attachments, or unredacted context.
 
 ### M13. Developer Toolkit
 
 **Purpose:** let contributors integrate, debug, and test without a live model or production data.
 
-**Responsibilities:** Mock model server, stream inspector, context-profile simulator, Context Manifest/token inspector, tool playground, permission viewer, Integration Generator, Manifest review report, generated adapter/fixture scaffolding, replay runner, plugin compatibility validator, fixed evaluation corpus, and failure simulation.
+**Responsibilities:** Mock model server, stream inspector, context-profile simulator, Context Manifest/token inspector, tool playground, permission viewer, Privacy Resource/job simulator, Integration Generator, Manifest review report, generated adapter/fixture scaffolding, replay runner, plugin compatibility validator, fixed evaluation corpus, and failure simulation.
 
 **Acceptance:** CI runs without provider credentials; a sanitized replay fixture reproduces a failed run; the Integration Generator never activates writes and reports unresolved security or transaction semantics; error simulation covers disconnect, timeout, malformed events, tool failure, permission denial, renderer failure, and attachment failure.
 
@@ -557,7 +568,7 @@ The repository SHOULD include domain-neutral examples for wellness logging, itin
 | Knowledge & Retrieval | disabled | web, URL, document, host knowledge, citations |
 | Memory | disabled | explicit scoped Memory with user controls |
 | Action Workspace | disabled | editable confirmed actions and idempotent host application |
-| Safety & Governance | minimum baseline required | permission enforcement, write blocking, redaction, and audit; advanced limits are configurable |
+| Safety & Governance | minimum baseline required | permission enforcement, write blocking, redaction, Privacy Center inventory/export/deletion, derived-data invalidation, and audit; advanced limits are configurable |
 | Developer Toolkit | development only | Mock services, inspectors, replay, validation, evaluation, and failure simulation |
 
 ## Host integration manifest and plugin lifecycle
@@ -612,6 +623,7 @@ The minimum `Level 3` custom plugin manifest contains:
   "tools": ["sample.lookup", "sample.propose-update"],
   "actions": ["sample.update"],
   "renderers": ["sample.result", "sample.action"],
+  "privacy_resources": ["sample.private-cache"],
   "configuration_schema": "schemas/sample-config.json",
   "migrations": []
 }
@@ -665,6 +677,7 @@ Minimum behavior:
 - show user-facing tool outcomes rather than internal function names;
 - make proposed actions editable before confirmation;
 - render `blocked_plugin_disabled` Actions as readable but non-confirmable, with compatible re-enable, manual cancel, and archival guidance;
+- provide a unified Privacy Center with category inventory, retention owner, export, deletion preview, destructive confirmation, progress, partial-result, retry, and unresolved-processor states;
 - provide accessible error, retry, cancellation, and permission-denied states;
 - meet WCAG 2.2 AA for the default web kit;
 - support reduced motion and 44 px minimum touch targets;
@@ -682,6 +695,42 @@ The framework distinguishes three information classes:
 | Memory | explicit persistent information | scoped, inspectable, editable, deletable, and authorized |
 
 Cancelled actions and unverified model statements MUST NOT become Memory. Context summaries MUST NOT be used to repair or override structured host facts.
+
+## Privacy Center and data lifecycle
+
+Privacy Center is part of the mandatory Safety & Governance baseline. It presents one authorized inventory across core modules, official packages, Host Integration Manifests, and optional plugins.
+
+Minimum resource categories are:
+
+| Category | Examples | Default control |
+| --- | --- | --- |
+| Conversations and Messages | user text, assistant output, message timing | view, export, delete by authorized scope |
+| Attachments | images, files, persisted voice-message audio | preview metadata, export, delete/revoke |
+| Transcripts | automatic and user-corrected voice-message revisions | view provenance, export, delete with source policy |
+| Memory | explicit preferences and durable constraints | view, edit, export, delete |
+| Reasoning traces | persisted `raw_trace`, when separately enabled | sensitive warning, export, delete |
+| Context artifacts | Context Views where retained, Manifests, summaries, Working Ledger, retrieval indexes | inspect metadata; rebuild or invalidate rather than treat as source truth |
+| Pending Actions | proposed, blocked, cancelled, archived, or failed Actions | view, cancel/archive where allowed; deletion follows audit policy |
+| Integration/plugin data | declared extension-owned storage | export/delete through registered handlers |
+| Audit and applied Host records | minimum security trail and committed business objects | disclose retention and owner; redirect Host-owned deletion to Host controls |
+
+Privacy Job lifecycle is:
+
+```text
+requested -> previewing -> awaiting_confirmation -> running
+running -> completed | partial | failed | cancelled
+partial | failed -> retrying -> running
+```
+
+An export MUST contain a machine-readable manifest describing categories, scopes, source IDs, schema versions, omitted resources, and retention restrictions. A deletion preview MUST identify direct sources, affected derived artifacts, Host-owned records, externally processed data, legal/security retention, and irreversible effects before confirmation.
+
+Deletion is source-aware. Removing a Message, attachment, transcript, Memory record, or retained trace MUST remove or invalidate dependent summaries, Working Ledger entries, retrieval indexes, Context Manifests, caches, and generic renderer data. Deletion and invalidation are idempotent and resumable. Search and authorization filtering occur before results are returned, so deleted or revoked data cannot re-enter a Context View during cleanup.
+
+Privacy Center does not silently delete committed Host business records. Applied Actions link to the Host-owned object and its deletion controls. Audit records MAY retain a minimal tombstone when required for security, abuse prevention, or law; the UI and export disclose the reason, fields retained, owner, and retention period.
+
+Every integration or plugin that persists data MUST register its Privacy Resources and handlers before activation. Disablement or package removal cannot orphan user data: export and deletion handlers remain available through a stable Host boundary or migration package until the declared retention period ends.
+
+Privacy Jobs are scoped to the authenticated actor and Host scope, require destructive confirmation for deletion, emit `privacy.job.updated`, preserve item-level results, and never report full success when any registered processor is unresolved. External processors are reported individually; the framework cannot claim their deletion completed without processor confirmation.
 
 ## Security and privacy
 
@@ -707,6 +756,7 @@ Cancelled actions and unverified model statements MUST NOT become Memory. Contex
 - `raw_trace` requires explicit Host policy and viewer authorization, is excluded from normal logs, Memory, and Context Summary by default, and is not persisted unless the Host separately enables trace retention.
 - Raw-trace exports MUST be labelled as sensitive provider reasoning content.
 - Generated Host Integration Manifests remain `draft` until a reviewer resolves permission, privacy, idempotency, transaction, confirmation, cascading-delete, and undo risks. Runtime discovery MUST NOT activate undeclared Host operations.
+- Privacy Resource inventory and jobs require actor plus Host-scope authorization. Exports use private authenticated delivery; deletion cannot report completion until every registered processor reports a terminal result or is explicitly disclosed as unresolved.
 
 ## Versioning and compatibility
 
@@ -759,6 +809,7 @@ Parallel work rules:
 - retrieval citations and external-data permission tests;
 - Memory scope and deletion tests;
 - Action state, reauthorization, idempotency, partial failure, and undo tests;
+- Privacy Resource registration, scoped inventory, export manifest, deletion preview/confirmation, derived-artifact cascade, partial/retry, plugin removal, Host-owned record handoff, external-processor confirmation, and retention-disclosure tests;
 - redaction, quota, audit, replay, and failure-simulation tests.
 
 ### Cross-module scenarios
@@ -778,6 +829,7 @@ Parallel work rules:
 | Config-only application | M0, M2, M3, M4, M13 | approved Manifest supplies a read tool and confirmed Action without custom plugin code |
 | External retrieval | M6, M9, M12 | citation, freshness, permission, and budget enforcement |
 | Deleted Memory | M8, M10, M13 | record no longer enters context; audit remains |
+| Unified privacy deletion | M0, M4, M6, M8, M10, M12, M13 | source data and registered derivatives are removed or invalidated, Host-owned records are handed off, partial processors remain visible and retryable |
 | Domain portability | M0, M4, M11, M14 | three examples introduce no domain fields into core |
 
 ## MVP acceptance criteria
@@ -797,8 +849,9 @@ The MVP is complete when:
 - [ ] The same Runtime supports `single` and `multiple` Conversation modes, and Context Management supports `lite`, `balanced`, and `durable` profiles through one compiler contract.
 - [ ] Stream interruption, upload failure, permission denial, provider failure, renderer failure, and partial Action failure have tested recovery paths.
 - [ ] Official packages can be enabled or disabled according to their policy.
+- [ ] Privacy Center inventories all registered assistant data, exports it with a manifest, previews deletion impact, and completes or truthfully reports partial deletion with derived-data invalidation.
 - [ ] CI runs conformance and end-to-end Mock scenarios without external credentials.
-- [ ] Direct-embed, Integration Manifest, Integration Generator, custom-plugin, UI, testing, security, and migration documentation is published.
+- [ ] Direct-embed, Integration Manifest, Integration Generator, custom-plugin, UI, Privacy Center, testing, security, and migration documentation is published.
 
 ## Deferred work
 

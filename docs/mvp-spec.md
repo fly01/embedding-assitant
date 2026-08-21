@@ -33,7 +33,7 @@ The MVP MUST:
 1. Let a host application embed a text assistant with minimal integration code.
 2. Provide one event protocol, state model, error model, permission model, and audit model across applications.
 3. Provide both a polished default interface and an unstyled Headless interaction layer.
-4. Support progressive adoption of image, voice, file, tool, retrieval, memory, and confirmed-action capabilities.
+4. Support progressive adoption of image, two-mode voice input, file, tool, retrieval, memory, and confirmed-action capabilities.
 5. Let hosts add domain tools, context providers, actions, and renderers through a declarative Integration Manifest, a generated integration, or an optional custom plugin without modifying the core runtime.
 6. Keep business data access and final writes under host-application control.
 7. Preserve original conversation records when optional context summarization is enabled.
@@ -84,6 +84,9 @@ The MVP does not include:
 | Working Ledger | Rebuildable structured state for active goals, constraints, corrections, decisions, open threads, and entity or Action references. |
 | Context View | Immutable, per-Run compilation of model input blocks selected under one token budget and permission snapshot. |
 | Context Manifest | Developer-facing explanation of which blocks entered a Context View, why they were selected, their token cost, and what was excluded. |
+| Voice message | Persisted playable audio Message that is transcribed by a backend batch-ASR adapter before its transcript enters the assistant Run. |
+| Live dictation | Streaming or incremental ASR that fills an editable Composer draft; audio is not sent as a playable Message. |
+| Message time divider | Derived UI label inserted before a message group when the first visible message, local-date boundary, or configured inactivity threshold requires a new time anchor. |
 
 ## Architecture
 
@@ -170,7 +173,7 @@ The Integration Generator runs only during development or build workflows. It MA
 | Entity | Purpose | Required relationships |
 | --- | --- | --- |
 | `Conversation` | Host-scoped conversation container | actor, host scope, protocol version |
-| `Message` | Immutable user, assistant, or tool content | conversation, role, sequence, content parts |
+| `Message` | Immutable user, assistant, or tool content | conversation, role, sequence, content parts, created/visible/completed/edited timing |
 | `Run` | Execution lifecycle for one user turn | input message, event sequence, status, usage |
 | `Attachment` | Controlled image, audio, or file metadata | owner, media type, processing state, private locator |
 | `ToolInvocation` | Typed tool request and result | run, tool version, permission decision, audit reference |
@@ -214,6 +217,10 @@ interface AssistantEvent<TPayload = unknown> {
     | "reasoning.trace.delta"
     | "reasoning.trace.completed"
     | "reasoning.trace.unavailable"
+    | "transcription.started"
+    | "transcription.delta"
+    | "transcription.completed"
+    | "transcription.failed"
     | "attachment.updated"
     | "tool.requested"
     | "tool.started"
@@ -255,7 +262,9 @@ The MVP MUST support typed message parts for:
 - Markdown text;
 - image attachments;
 - file attachments;
+- playable audio voice messages;
 - editable voice transcripts;
+- versioned backend transcripts attached to sent voice messages;
 - tool activity;
 - citations;
 - action cards;
@@ -265,6 +274,26 @@ The MVP MUST support typed message parts for:
 - provider reasoning traces when enabled.
 
 A renderer that does not recognize a content type MUST use a safe generic representation rather than fail the entire conversation.
+
+### Message ordering and time dividers
+
+Message order is determined by a stable server `sequence`, never by a timestamp. Timing fields are stored as UTC instants: `created_at`, optional `visible_at`, optional `completed_at`, optional `edited_at`, and optional `sender_timezone`. User messages display from `created_at`; assistant messages use `visible_at ?? created_at`.
+
+Time dividers are derived UI, not stored Messages. The default divider policy is:
+
+```yaml
+message_time_divider:
+  inactivity_threshold_seconds: 300
+  show_for_first_visible_message: true
+  always_show_on_local_date_change: true
+  timezone: viewer
+```
+
+A divider appears before the first visible message, when adjacent visible messages cross a local-date boundary, or when their display times are at least the configured inactivity threshold apart. Continuous messages inside the threshold do not repeat a time label. The threshold is Host-configurable; the default is five minutes.
+
+Divider formats are localized by age: today `HH:mm`, yesterday `Yesterday HH:mm`, the recent week `weekday HH:mm`, earlier in the current year `month day HH:mm`, and older years `year month day HH:mm`. The Host MAY select viewer, Conversation, or Host timezone; business-domain times remain separate from chat display time.
+
+History pagination MUST recompute dividers after pages merge and preserve the reading anchor. Tool, transcription, Action, or plugin-state updates change content in place and MUST NOT reorder the parent Message or create a new chat timestamp. Exact timestamps remain available through message details and accessibility labels.
 
 ### Reference HTTP transport
 
@@ -405,7 +434,7 @@ Custom Domain Plugins are optional and are installed at release time through the
 
 **Purpose:** provide reusable frontend behavior without imposing a visual design.
 
-**Responsibilities:** conversation state, event replay, pagination, drafts, attachments, disclosure level, thinking status, reasoning summaries, provider trace state, tool activity, citations, action state, cancellation, retry, and reconnection.
+**Responsibilities:** conversation state, event replay, sequence-based ordering, derived time dividers, pagination, drafts, attachment and voice-mode state, disclosure level, thinking status, reasoning summaries, provider trace state, tool activity, citations, action state, cancellation, retry, and reconnection.
 
 **Acceptance:** the package renders no UI; all state is serializable; reducers handle duplicate events and interrupted streams; an application can replace every visible component while preserving behavior.
 
@@ -413,17 +442,32 @@ Custom Domain Plugins are optional and are installed at release time through the
 
 **Purpose:** provide an opinionated interface that is ready to ship and remains themeable.
 
-Required components include `AssistantShell`, `ConversationThread`, `UserMessage`, `AssistantMessage`, `StreamingMarkdown`, `ThinkingDisclosure`, `ToolActivity`, `Composer`, `ActionCard`, `CitationList`, `AttachmentPreview`, `ErrorBanner`, `StopButton`, `RegenerateButton`, and plugin renderer slots.
+Required components include `AssistantShell`, `ConversationThread`, `MessageTimeDivider`, `UserMessage`, `AssistantMessage`, `StreamingMarkdown`, `ThinkingDisclosure`, `ToolActivity`, `Composer`, `VoiceMessageBubble`, `LiveDictationControl`, `TranscriptionStatus`, `ActionCard`, `CitationList`, `AttachmentPreview`, `ErrorBanner`, `StopButton`, `RegenerateButton`, and plugin renderer slots.
 
-**Acceptance:** panel, drawer, inline, and full-page modes work at mobile and desktop widths; keyboard and screen-reader paths cover every operation; internal tool identifiers remain hidden below developer level; all six disclosure levels render distinctly; `raw_trace` shows the full provider-supplied trace when available and an explicit unavailable state otherwise.
+**Acceptance:** panel, drawer, inline, and full-page modes work at mobile and desktop widths; keyboard and screen-reader paths cover every operation; the five-minute default time-grouping rule survives pagination without moving the reading anchor; both voice modes expose distinct states and privacy expectations; internal tool identifiers remain hidden below developer level; all six disclosure levels render distinctly; `raw_trace` shows the full provider-supplied trace when available and an explicit unavailable state otherwise.
 
 ### M7. Multimodal Input Pack
 
 **Purpose:** standardize image, voice, and file input across hosts.
 
-**Responsibilities:** image selection, camera hints, drag and drop, previews, ordering, compression, upload progress, retry, voice permission, waveform, timer, cancel, transcription, editable transcript, file validation, and attachment lifecycle. OCR, vision, and ASR are adapter interfaces rather than fixed providers.
+**Responsibilities:** image selection, camera hints, drag and drop, previews, ordering, compression, upload progress, retry, voice permission, waveform, timer, cancel, batch and streaming transcription, editable dictation drafts, playable voice-message audio, transcript status, file validation, and attachment lifecycle. OCR, vision, batch ASR, streaming ASR, and on-device ASR are adapter interfaces rather than fixed providers.
 
-**Acceptance:** an upload failure preserves the text draft; voice transcription never sends automatically; raw audio is released after successful transcription unless the host explicitly enables retention and discloses it; frontend and backend enforce the same type and size policy.
+Voice input configuration is:
+
+```yaml
+voice_input:
+  modes: [voice_message, live_dictation]
+  default_mode: live_dictation
+  allow_user_switch: true
+```
+
+`voice_message` records and sends a playable audio Message. The audio uploads through private Host-authorized storage, the Message becomes visible with duration and playback state, and a backend batch-ASR adapter produces a derived transcript before the assistant Run consumes text. The original audio is authoritative user content and follows Host retention and deletion policy; the transcript stores its source audio ID, language, adapter/version, confidence when available, status, and revision. A user correction creates a new transcript revision without erasing the automatic transcript. A correction made after an assistant response requires an explicit regenerate operation and MUST NOT replay prior non-idempotent work. Transcription failure leaves the audio Message readable and retryable and MUST NOT fabricate text or silently start the assistant Run.
+
+`live_dictation` streams partial ASR into the Composer and continuously replaces only the current dictation suffix. It MAY use an on-device model or an explicitly disclosed server streaming fallback. Stopping leaves editable text and never sends automatically. On-device failure MUST be disclosed before any server upload. Live-dictation audio is ephemeral by default and is not stored as a Message.
+
+An ASR adapter declares `batch`, `streaming`, or both; execution location `device` or `server`; accepted formats; languages; partial-result support; and retention behavior. If both modes are enabled, the Host provides an explicit mode switch or distinct gestures and persists the user preference only when permitted.
+
+**Acceptance:** image/file upload failure preserves the text draft; voice-message upload and transcription have independent retry states; voice messages remain playable when transcription fails; the assistant consumes only a completed or user-corrected transcript; live dictation preserves partial text on recoverable failure; neither mode silently changes execution location; frontend and backend enforce the same audio type, duration, size, and privacy policy.
 
 ### M8. Context Management Pack
 
@@ -508,7 +552,7 @@ The repository SHOULD include domain-neutral examples for wellness logging, itin
 | Package | Default state | MVP contents |
 | --- | --- | --- |
 | Essentials | enabled | date/time, calculator, unit conversion, formatting, text cleanup, bounded page context |
-| Multimodal Input | disabled | image, voice, and file input lifecycle |
+| Multimodal Input | disabled | image and file lifecycle plus persisted `voice_message` batch transcription and editable `live_dictation` streaming transcription |
 | Context Management | disabled | `balanced` and `durable` profiles, segmentation, ledger, summaries, retrieval, invalidation, rebuild, and Context Manifest; core always provides `lite` |
 | Knowledge & Retrieval | disabled | web, URL, document, host knowledge, citations |
 | Memory | disabled | explicit scoped Memory with user controls |
@@ -615,6 +659,8 @@ Minimum behavior:
 - distinguish history loading, sending, streaming, tool execution, upload, transcription, and action application;
 - auto-follow streaming only while the user remains at the bottom;
 - preserve the reading anchor when older history is prepended;
+- derive localized time dividers with a five-minute default inactivity threshold, recomputing them after pagination without changing Message order;
+- keep `voice_message` playback/transcription states separate from `live_dictation` recording, partial-text, and editable-draft states;
 - honor the configured disclosure level without inventing unavailable reasoning data;
 - show user-facing tool outcomes rather than internal function names;
 - make proposed actions editable before confirmation;
@@ -657,7 +703,7 @@ Cancelled actions and unverified model statements MUST NOT become Memory. Contex
 - Action confirmation MUST revalidate authorization and payload integrity.
 - Every committed Action MUST have an idempotency key and audit record.
 - Partial failure MUST identify successful, failed, and retryable items.
-- Raw audio is ephemeral by default after transcription.
+- Live-dictation audio is ephemeral by default and is not retained as a Message. Voice-message audio is persisted as private user content under explicit Host retention and deletion policy.
 - `raw_trace` requires explicit Host policy and viewer authorization, is excluded from normal logs, Memory, and Context Summary by default, and is not persisted unless the Host separately enables trace retention.
 - Raw-trace exports MUST be labelled as sensitive provider reasoning content.
 - Generated Host Integration Manifests remain `draft` until a reviewer resolves permission, privacy, idempotency, transaction, confirmation, cascading-delete, and undo risks. Runtime discovery MUST NOT activate undeclared Host operations.
@@ -706,8 +752,9 @@ Parallel work rules:
 - integration/plugin compatibility, disablement, migration preflight, renderer failure, and `blocked_plugin_disabled` Pending Actions;
 - Headless reducers for every event type;
 - UI component, accessibility, responsive, and recovery tests;
+- message chronology tests for sequence ordering, five-minute grouping, cross-date labels, timezone formatting, pagination recomputation, and in-place Action updates;
 - disclosure tests for all six levels, provider capability mismatch, authorization denial, and raw-trace persistence defaults;
-- image, voice, file, and attachment lifecycle tests;
+- image, file, voice-message, live-dictation, ASR capability, transcript revision, privacy, fallback-disclosure, and attachment lifecycle tests;
 - context segmentation, summary trigger, correction/supersession, compaction race, invalidation, permission filtering, provenance, Manifest, and rebuild tests;
 - retrieval citations and external-data permission tests;
 - Memory scope and deletion tests;
@@ -721,6 +768,9 @@ Parallel work rules:
 | Text conversation | M0, M1, M5, M6 | persisted input, streamed output, completed run |
 | Read-only tool | M0, M1, M3, M6, M12 | visible lifecycle, authorized execution, validated output |
 | Image upload failure | M5, M6, M7 | draft retained, retry available, clear error |
+| Voice message | M0, M1, M5, M6, M7, M12 | private playable audio persists, batch transcript completes before assistant consumption, failure remains retryable |
+| Live dictation | M5, M6, M7, M12 | on-device or disclosed server streaming fills an editable draft, never auto-sends, and retains no audio Message |
+| Message time grouping | M0, M5, M6 | sequence order remains stable, continuous messages share one time anchor, five-minute/date boundaries create localized dividers, pagination recomputes without jump |
 | Long single Conversation | M1, M8, M13 | selected profile compiles a bounded Context View, original history remains unchanged, Manifest explains inclusion and exclusion |
 | Confirmed write | M0, M2, M11, M12 | proposal, confirmation, host application, idempotency, audit |
 | Disabled plugin | M3, M4, M6 | no callable tool, safe renderer behavior, actionable diagnostic |
@@ -737,7 +787,7 @@ The MVP is complete when:
 - [ ] M0 schemas are frozen at `0.1` and the conformance command passes.
 - [ ] M1-M14 satisfy their module acceptance requirements.
 - [ ] A representative host embeds the default UI through a real Host Adapter.
-- [ ] Text, image/file attachment, and editable voice transcript flows work.
+- [ ] Text, image/file attachment, persisted voice-message with backend transcript, and live editable dictation flows work.
 - [ ] Streaming Markdown, all six disclosure levels, tool activity, citations, and Action cards render through public contracts.
 - [ ] A `Level 1` Host Integration Manifest contributes a tool and a confirmed Action without custom plugin code.
 - [ ] A `Level 2` generated Manifest reports unresolved risks and cannot activate writes before review.

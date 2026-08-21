@@ -39,6 +39,8 @@ The framework manages assistant behavior. The host application keeps control of 
 - **Rebuildable context summaries:** Context Management never deletes or rewrites original messages.
 - **Configurable conversation and context policy:** single and multiple Conversation modes share one Runtime; `lite`, `balanced`, and `durable` profiles share one Context Compiler.
 - **Progressive Host integration:** applications can start with direct embed, move to a declarative or generated Host Integration Manifest, and write a custom Domain Plugin only when configuration cannot express the required behavior safely.
+- **Chat-native chronology:** sequence-stable Messages use localized time dividers only at the first visible Message, a date boundary, or a configurable inactivity gap that defaults to five minutes.
+- **Two voice modes:** persisted playable `voice_message` input uses backend batch transcription, while `live_dictation` uses on-device or disclosed server streaming ASR to fill an editable draft.
 - **Controlled plugins:** plugins are installed during a release and may be enabled or disabled at runtime; arbitrary remote code installation is out of scope for the MVP.
 
 ## Architecture
@@ -109,13 +111,20 @@ Each module publishes fixtures or fakes so teams can work in parallel after M0 c
 
 Every level retains the Host Adapter authority boundary. Generated write mappings never activate automatically; they require human review of permissions, privacy, validation, idempotency, transaction, confirmation, cascading-delete, and undo semantics.
 
+### Message time and voice input
+
+- Continuous Messages inside the default five-minute interval share one compact time anchor; date and time labels become more explicit for older history and are recomputed after pagination.
+- `voice_message` sends a private playable audio bubble, retains the audio under Host policy, and waits for a backend transcript before assistant processing.
+- `live_dictation` streams partial transcription into the Composer, remains editable, never auto-sends, and does not create or retain an audio Message.
+- ASR adapters may be batch or streaming and device-side or server-side. A fallback that moves audio off device must be disclosed before upload.
+
 ## Progressive adoption
 
 A host can adopt Framed Assistant incrementally:
 
 1. Embed the default text assistant.
 2. Implement or configure the Host Adapter, choose an integration level, and enable deterministic Essentials tools.
-3. Add image, voice, and file input.
+3. Add image, file, persisted voice-message, and editable live-dictation input.
 4. Select a context profile, then add configurable reasoning disclosure, tool activity, and Context Management as needed.
 5. Add retrieval, citations, and explicit Memory where appropriate.
 6. Add confirmed business Actions through a Manifest, generated integration, or optional custom Domain Plugin.
@@ -132,6 +141,7 @@ No stage requires the host to surrender authorization or transaction control.
 - Private attachments use host-authorized access.
 - Logs and replay fixtures exclude secrets, raw private attachments, and unredacted model context.
 - Raw provider reasoning traces are disabled by default and require explicit Host policy, viewer authorization, and a separate retention decision.
+- Voice-message audio is private persisted user content under Host retention policy; live-dictation audio is ephemeral by default and cannot move from device to server through a silent fallback.
 - Integration Generator output remains draft until unresolved security and transaction semantics are reviewed; production runtime discovery cannot activate undeclared Host operations.
 
 Security-sensitive behavior is defined normatively in the [Security and privacy section](docs/mvp-spec.md#security-and-privacy).

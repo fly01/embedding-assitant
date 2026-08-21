@@ -58,10 +58,33 @@
 
 ## Components
 
-- Existing patterns to preserve as behavioral evidence: streaming Markdown, paginated message history, multimodal composition, editable voice transcripts, visible tool activity, resumable streams, attachment previews, and editable confirm/cancel action cards.
-- New/changed components: headless assistant store, assistant shell, conversation thread, message-part renderers, multimodal composer, reasoning disclosure, tool activity, citations, action workspace, error recovery, plugin slots, host-context badges, Integration Manifest editor/review, generated-risk report, Context Profile settings, Context Manifest inspector, and developer inspectors.
-- Variants and states: inline, drawer, side panel, full-screen tab, and floating panel; signed out, disabled by Host, loading history, streaming, interrupted, offline, uploading, transcribing, permission denied, Integration Manifest draft, review blocked, plugin disabled, Action blocked by plugin, reasoning unavailable, raw trace visible, context profile preparing, context fallback active, context rebuild failed, awaiting confirmation, applying, partial failure, applied, cancelled, archived, and undo available.
+- Existing patterns to preserve as behavioral evidence: streaming Markdown, sequence-stable paginated history, grouped message-time dividers, multimodal composition, playable voice messages, editable live dictation, visible tool activity, resumable streams, attachment previews, and editable confirm/cancel action cards.
+- New/changed components: headless assistant store, assistant shell, conversation thread, `MessageTimeDivider`, message-part renderers, multimodal composer, `VoiceMessageBubble`, `LiveDictationControl`, `TranscriptionStatus`, reasoning disclosure, tool activity, citations, action workspace, error recovery, plugin slots, host-context badges, Integration Manifest editor/review, generated-risk report, Context Profile settings, Context Manifest inspector, and developer inspectors.
+- Variants and states: inline, drawer, side panel, full-screen tab, and floating panel; signed out, disabled by Host, loading history, streaming, interrupted, offline, uploading, recording voice message, voice message transcribing, voice transcription failed, live dictation loading/listening/partial/final, permission denied, Integration Manifest draft, review blocked, plugin disabled, Action blocked by plugin, reasoning unavailable, raw trace visible, context profile preparing, context fallback active, context rebuild failed, awaiting confirmation, applying, partial failure, applied, cancelled, archived, and undo available.
 - Token/component ownership: the framework owns semantic token names and slot contracts; host applications override values or renderers without forking runtime state.
+
+### Message chronology and time grouping
+
+- Server `sequence` determines Message order. User messages display from `created_at`; assistant messages display from `visible_at ?? created_at`. Completion, transcription, tool, Action, or plugin updates never move the parent Message.
+- `MessageTimeDivider` is derived UI. Show it for the first visible Message, a local-date boundary, or an inactivity gap at least `300` seconds by default. Continuous messages within that threshold share one time anchor. Hosts may configure the threshold.
+- Localized labels are: today `HH:mm`; yesterday `Yesterday HH:mm`; recent week `weekday HH:mm`; earlier this year `month day HH:mm`; prior years `year month day HH:mm`.
+- Viewer timezone is the default; Conversation or Host timezone may override it. Business-domain time remains separate from chat display time.
+- After history pages merge, recompute adjacent dividers and preserve the prior reading anchor. Time dividers are never persisted as Messages.
+- Message details expose exact timestamp, timezone, delivery/completion state, and edit time where available. Screen readers receive the full localized date and time even when the visible divider is compact.
+
+### Voice input modes
+
+```yaml
+voice_input:
+  modes: [voice_message, live_dictation]
+  default_mode: live_dictation
+  allow_user_switch: true
+```
+
+- `voice_message`: record and send a playable audio bubble. Upload through private Host storage, show duration/playback immediately, display transcription progress, and start the assistant Run only after a transcript is ready. The resulting transcript is available as a collapsible caption. The original audio is authoritative user content under Host retention policy; the automatic transcript is derived, versioned, and linked to its audio source. Failure preserves the playable Message with retry and correction paths. Correcting a transcript after an assistant response offers explicit regenerate and never silently replays an earlier Action.
+- `live_dictation`: use streaming ASR to replace only the current dictation suffix in the Composer. Prefer an available on-device model; disclose any switch to server transcription before audio leaves the device. Stopping keeps editable text and never sends automatically. Audio is ephemeral and is not a Message.
+- When both modes are enabled, use an explicit mode switch or clearly distinct gestures and labels. Never infer a mode change from provider failure. Persist user preference only when Host policy permits it.
+- ASR adapters declare `batch` and/or `streaming`, `device` or `server`, supported languages/formats, partial-result behavior, and retention behavior. The UI shows model download/preparation, permission denial, recording, upload, transcription, partial text, completion, failure, and retry as distinct states.
 
 ### Reasoning disclosure
 
@@ -101,10 +124,10 @@ If a contributing plugin is disabled, its not-yet-applying Action card remains r
 ## Accessibility
 
 - Target standard: WCAG 2.2 AA for the default web component kit.
-- Keyboard/focus behavior: composer, attachment controls, stop/regenerate, reasoning disclosure, tool details, citations, and action controls must be reachable, labelled, and visibly focused.
+- Keyboard/focus behavior: composer, voice-mode switch, record/stop, voice-message playback, transcript retry/correction, attachment controls, stop/regenerate, reasoning disclosure, tool details, citations, and Action controls must be reachable, labelled, and visibly focused.
 - Contrast/readability: permission, confirmation, and error states never rely on color alone.
-- Screen-reader semantics: streaming and tool status use restrained live regions; reasoning disclosures expose their current level and expanded state; raw trace does not continuously flood a live region; action cards announce current state and available operations.
-- Reduced motion and sensory considerations: waveform, loading, and streaming animations simplify or pause under reduced-motion preferences.
+- Screen-reader semantics: time dividers expose full localized time, voice messages expose duration and transcription status, live dictation announces state without reading every partial replacement, streaming and tool status use restrained live regions, reasoning disclosures expose their current level and expanded state, raw trace does not continuously flood a live region, and Action cards announce current state and available operations.
+- Reduced motion and sensory considerations: waveform, loading, and streaming animations simplify or pause under reduced-motion preferences while recording state remains unambiguous.
 
 ## Responsive behavior
 
@@ -114,9 +137,9 @@ If a contributing plugin is disabled, its not-yet-applying Action card remains r
 
 ## Interaction states
 
-- Loading: distinguish history loading, sending, model streaming, tool execution, upload processing, transcription, and action application.
+- Loading: distinguish history loading, sending, model streaming, tool execution, voice-message upload/batch transcription, live-dictation model preparation/streaming transcription, file processing, and Action application.
 - Empty: show host-provided starter prompts and current-context hints, never fabricated conversation content.
-- Error: preserve the draft and safe attachment metadata; explain whether retry, reconcile, edit, cancellation, archival, compatible plugin re-enable, or context-profile fallback is available.
+- Error: preserve the draft, playable voice Message, partial dictation text, and safe attachment metadata as applicable; explain whether upload retry, transcription retry/correction, reconcile, edit, cancellation, archival, compatible plugin re-enable, or context-profile fallback is available.
 - Success: applied action cards show the user-facing outcome and invoke an explicit host refresh callback.
 - Disabled: expose the reason visually and to assistive technology.
 - Offline/slow network: retain existing messages, stop indeterminate loading, and offer bounded reconnection or retry.
@@ -124,7 +147,7 @@ If a contributing plugin is disabled, its not-yet-applying Action card remains r
 ## Content voice
 
 - Tone: concise, calm, and transparent. The first reference locale is Simplified Chinese, but all default copy MUST be replaceable through localization resources; domain terminology comes from the Host Integration Manifest or optional plugin.
-- Terminology: “助手”, “正在思考”, “正在查看”, “待确认”, “确认”, “修改”, “取消”, “已应用”, “恢复回复”, “引用来源”.
+- Terminology: “助手”, “语音消息”, “实时转写”, “正在录音”, “正在转写”, “转写失败”, “正在思考”, “正在查看”, “待确认”, “确认”, “修改”, “取消”, “已应用”, “恢复回复”, “引用来源”.
 - Microcopy rules: below developer level, describe user-facing activity and outcomes rather than internal function names. `raw_trace` is labelled as verbatim provider reasoning, not verified fact or framework-authored explanation. Integration review surfaces distinguish “generated candidate”, “approved mapping”, “blocked risk”, and “active capability”; a disabled-plugin Action never appears cancelled or executable.
 
 ## Implementation constraints
@@ -132,8 +155,8 @@ If a contributing plugin is disabled, its not-yet-applying Action card remains r
 - Framework/styling system: MVP reference client uses Vue 3, TypeScript, and a headless store; the reference backend uses Python/FastAPI. JSON Schema and the event protocol are the cross-language source of truth.
 - Design-token constraints: semantic CSS variables and typed slot props; no application-specific palette in framework packages.
 - Performance constraints: paginated or virtualized history, bounded attachment previews, stream backpressure, profile-driven token budgeting, one Context Compiler contract, Context Manifest diagnostics, and no full-resolution image decoding in message lists.
-- Compatibility constraints: authenticated private-data Hosts, generic adapters backed by approved configuration, review-gated generated integrations, resumable event streams, Host-controlled media URLs, mobile Safari attachment behavior, and optional custom plugins installed at release time but enabled or disabled at runtime.
-- Test/screenshot expectations: contract fixtures, reducer tests, all four Host integration levels, generated-risk review, `blocked_plugin_disabled` Actions, generic historical renderer fallback, single/multiple Conversation modes, `lite`/`balanced`/`durable` context profiles, profile preparation/fallback/failure states, all six reasoning disclosure levels, trace-unavailable and authorization states, component interaction and accessibility tests, mobile/desktop visual smoke checks, disconnect recovery, permission denial, and Action idempotency.
+- Compatibility constraints: authenticated private-data Hosts, generic adapters backed by approved configuration, review-gated generated integrations, resumable event streams, Host-controlled media URLs, batch/streaming and device/server ASR adapters, explicit fallback disclosure, mobile Safari attachment behavior, and optional custom plugins installed at release time but enabled or disabled at runtime.
+- Test/screenshot expectations: contract fixtures, reducer tests, five-minute message-time grouping and pagination recomputation, both voice modes and ASR execution locations, audio retention/privacy, transcription failure/correction, all four Host integration levels, generated-risk review, `blocked_plugin_disabled` Actions, generic historical renderer fallback, single/multiple Conversation modes, `lite`/`balanced`/`durable` context profiles, profile preparation/fallback/failure states, all six reasoning disclosure levels, trace-unavailable and authorization states, component interaction and accessibility tests, mobile/desktop visual smoke checks, disconnect recovery, permission denial, and Action idempotency.
 
 ## Open questions
 

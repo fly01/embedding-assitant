@@ -43,6 +43,7 @@
 - Principle 4: model output is not a committed business change; side effects pass through typed actions, confirmation policy, host validation, idempotency, and audit.
 - Principle 5: context summaries are rebuildable model-input caches, not memory and not business truth. Compression never deletes or rewrites original messages.
 - Principle 6: plugins extend declared contracts and slots; they cannot bypass host data access, permissions, transactions, or audit.
+- Principle 7: single and multiple Conversation modes share one Runtime, while `lite`, `balanced`, and `durable` context profiles are presets over one Context Compiler rather than separate implementations.
 - Tradeoffs: MVP prioritizes a portable protocol, a Python/FastAPI reference runtime, and one polished Vue 3 implementation. SwiftUI and other UI-framework adapters follow the same protocol later.
 
 ## Visual language
@@ -57,8 +58,8 @@
 ## Components
 
 - Existing patterns to preserve as behavioral evidence: streaming Markdown, paginated message history, multimodal composition, editable voice transcripts, visible tool activity, resumable streams, attachment previews, and editable confirm/cancel action cards.
-- New/changed components: headless assistant store, assistant shell, conversation thread, message-part renderers, multimodal composer, reasoning disclosure, tool activity, citations, action workspace, error recovery, plugin slots, host-context badges, and developer inspectors.
-- Variants and states: inline, drawer, side panel, full-screen tab, and floating panel; signed out, disabled by host, loading history, streaming, interrupted, offline, uploading, transcribing, permission denied, reasoning unavailable, raw trace visible, awaiting confirmation, applying, partial failure, applied, cancelled, and undo available.
+- New/changed components: headless assistant store, assistant shell, conversation thread, message-part renderers, multimodal composer, reasoning disclosure, tool activity, citations, action workspace, error recovery, plugin slots, host-context badges, Context Profile settings, Context Manifest inspector, and developer inspectors.
+- Variants and states: inline, drawer, side panel, full-screen tab, and floating panel; signed out, disabled by host, loading history, streaming, interrupted, offline, uploading, transcribing, permission denied, reasoning unavailable, raw trace visible, context profile preparing, context fallback active, context rebuild failed, awaiting confirmation, applying, partial failure, applied, cancelled, and undo available.
 - Token/component ownership: the framework owns semantic token names and slot contracts; host applications override values or renderers without forking runtime state.
 
 ### Reasoning disclosure
@@ -73,6 +74,15 @@
 | `raw_trace` | Complete provider reasoning trace exactly as returned by a trace-capable adapter. |
 
 The Host defines the maximum permitted level. `raw_trace` is disabled by default, carries a persistent sensitive-content warning while visible, and shows an explicit unavailable state when the provider does not expose a trace. It is not added to normal logs, Memory, or Context Summary, and it is not persisted unless the Host separately enables trace retention.
+
+### Conversation and context configuration
+
+- `single` and `multiple` are Host-selected Conversation modes over the same data model and Runtime. In `single`, one Host-defined scope has one active Conversation; in `multiple`, users may create and manage several Conversations in that scope.
+- `lite` is the core context profile and uses authoritative Host facts, current input, current Action state, and a bounded recent raw window.
+- `balanced` adds a Working Ledger, summaries, relevant history retrieval, and a Context Manifest.
+- `durable` adds immutable internal Context Segments, correction and supersession tracking, hybrid raw retrieval, complete provenance, invalidation, and rebuild. It is the recommended profile for long-lived single-Conversation assistants.
+
+Profile controls belong to Host or administrator settings, not the ordinary chat composer. A profile upgrade shows preparing progress in developer/settings surfaces and activates atomically when its derived artifacts are ready. A failed build keeps the previous profile active and exposes diagnostics. A downgrade changes context selection without deleting the raw Conversation.
 
 ## Accessibility
 
@@ -92,7 +102,7 @@ The Host defines the maximum permitted level. `raw_trace` is disabled by default
 
 - Loading: distinguish history loading, sending, model streaming, tool execution, upload processing, transcription, and action application.
 - Empty: show host-provided starter prompts and current-context hints, never fabricated conversation content.
-- Error: preserve the draft and safe attachment metadata; explain whether retry, reconcile, edit, or cancellation is available.
+- Error: preserve the draft and safe attachment metadata; explain whether retry, reconcile, edit, cancellation, or context-profile fallback is available.
 - Success: applied action cards show the user-facing outcome and invoke an explicit host refresh callback.
 - Disabled: expose the reason visually and to assistive technology.
 - Offline/slow network: retain existing messages, stop indeterminate loading, and offer bounded reconnection or retry.
@@ -107,9 +117,9 @@ The Host defines the maximum permitted level. `raw_trace` is disabled by default
 
 - Framework/styling system: MVP reference client uses Vue 3, TypeScript, and a headless store; the reference backend uses Python/FastAPI. JSON Schema and the event protocol are the cross-language source of truth.
 - Design-token constraints: semantic CSS variables and typed slot props; no application-specific palette in framework packages.
-- Performance constraints: paginated or virtualized history, bounded attachment previews, stream backpressure, token-budgeted context assembly, and no full-resolution image decoding in message lists.
+- Performance constraints: paginated or virtualized history, bounded attachment previews, stream backpressure, profile-driven token budgeting, one Context Compiler contract, Context Manifest diagnostics, and no full-resolution image decoding in message lists.
 - Compatibility constraints: authenticated private-data hosts, resumable event streams, host-controlled media URLs, mobile Safari attachment behavior, and plugins installed at release time but enabled or disabled at runtime.
-- Test/screenshot expectations: contract fixtures, reducer tests, all six reasoning disclosure levels, trace-unavailable and authorization states, component interaction and accessibility tests, mobile/desktop visual smoke checks, disconnect recovery, permission denial, and action idempotency.
+- Test/screenshot expectations: contract fixtures, reducer tests, single/multiple Conversation modes, `lite`/`balanced`/`durable` context profiles, profile preparation/fallback/failure states, all six reasoning disclosure levels, trace-unavailable and authorization states, component interaction and accessibility tests, mobile/desktop visual smoke checks, disconnect recovery, permission denial, and action idempotency.
 
 ## Open questions
 

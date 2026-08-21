@@ -85,6 +85,12 @@ REQUIRED_SPEC_TERMS = (
     "requires explicit Host policy plus viewer authorization",
     "is excluded from normal logs, Memory, and Context Summary by default",
     "is not persisted unless the Host separately enables trace retention",
+    "conversation_mode: single | multiple",
+    "context_profile: lite | balanced | durable",
+    "Profiles are policy presets, not separate implementations",
+    "Context Compiler",
+    "Context Manifest",
+    "Working Ledger",
     "release time",
     "runtime",
     "MUST NOT delete or rewrite original messages",
@@ -108,6 +114,12 @@ REASONING_DISCLOSURE_LEVELS = (
     "activity",
     "developer",
     "raw_trace",
+)
+
+CONTEXT_PROFILES = (
+    "lite",
+    "balanced",
+    "durable",
 )
 
 MARKDOWN_LINK = re.compile(r"\[[^\]]+\]\(([^)]+)\)")
@@ -213,6 +225,22 @@ def main() -> int:
         failures.append(
             "docs/mvp-spec.md: reasoning disclosure table must contain exactly the six approved "
             f"levels in order (found {disclosure_rows})"
+        )
+
+    try:
+        profile_section = spec.split(
+            "All profiles use one Context Compiler", 1
+        )[1].split("Profiles are policy presets", 1)[0]
+    except IndexError:
+        profile_section = ""
+    profile_rows = tuple(
+        match.group(1)
+        for match in re.finditer(r"^- `([^`]+)`:", profile_section, flags=re.MULTILINE)
+    )
+    if profile_rows != CONTEXT_PROFILES:
+        failures.append(
+            "docs/mvp-spec.md: context profile definitions must contain exactly lite, balanced, "
+            f"and durable in order (found {profile_rows})"
         )
 
     if failures:

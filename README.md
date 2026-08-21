@@ -37,6 +37,7 @@ The framework manages assistant behavior. The host application keeps control of 
 - **Confirmed side effects:** business writes are typed Action proposals until the user confirms them and the host applies them.
 - **Configurable reasoning disclosure:** hosts can choose from hidden status through contextual activity, developer diagnostics, and an opt-in `raw_trace` level that displays the complete reasoning trace returned by a capable model provider.
 - **Rebuildable context summaries:** Context Management never deletes or rewrites original messages.
+- **Configurable conversation and context policy:** single and multiple Conversation modes share one Runtime; `lite`, `balanced`, and `durable` profiles share one Context Compiler.
 - **Controlled plugins:** plugins are installed during a release and may be enabled or disabled at runtime; arbitrary remote code installation is out of scope for the MVP.
 
 ## Architecture
@@ -78,12 +79,23 @@ Each module publishes fixtures or fakes so teams can work in parallel after M0 c
 | --- | --- |
 | Essentials | enabled |
 | Multimodal Input | disabled |
-| Context Management | disabled |
+| Context Management | disabled; the core still provides the `lite` profile |
 | Knowledge & Retrieval | disabled |
 | Memory | disabled |
 | Action Workspace | disabled |
 | Safety & Governance | minimum baseline required |
 | Developer Toolkit | development only |
+
+### Conversation and context profiles
+
+| Setting | Options | Meaning |
+| --- | --- | --- |
+| Conversation mode | `single`, `multiple` | One active Conversation or several manageable Conversations per Host-defined scope |
+| Context profile | `lite` | Host facts, current input, current Action state, and recent raw turns |
+| Context profile | `balanced` | `lite` plus a Working Ledger, summaries, relevant history retrieval, and a Context Manifest |
+| Context profile | `durable` | `balanced` plus immutable segments, correction tracking, hybrid raw retrieval, invalidation, rebuild, and complete provenance |
+
+`durable` is recommended for long-lived single-Conversation assistants. Profiles are presets over one compiler, so switching profiles never changes or deletes the raw Conversation.
 
 ## Progressive adoption
 
@@ -92,7 +104,7 @@ A host can adopt Framed Assistant incrementally:
 1. Embed the default text assistant.
 2. Implement the Host Adapter and enable deterministic Essentials tools.
 3. Add image, voice, and file input.
-4. Add configurable reasoning disclosure, tool activity, and Context Management.
+4. Select a context profile, then add configurable reasoning disclosure, tool activity, and Context Management as needed.
 5. Add retrieval, citations, and explicit Memory where appropriate.
 6. Add confirmed business actions and domain plugins.
 

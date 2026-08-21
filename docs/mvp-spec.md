@@ -38,6 +38,7 @@ The MVP MUST:
 6. Keep business data access and final writes under host-application control.
 7. Preserve original conversation records when optional context summarization is enabled.
 8. Allow modules to be implemented and tested independently against shared fixtures.
+9. Support configurable single- or multi-conversation topology and configurable context profiles without creating separate runtimes.
 
 ## Non-goals
 
@@ -73,6 +74,12 @@ The MVP does not include:
 | Reasoning summary | Provider-supplied or separately generated user-readable explanation of key reasoning steps. |
 | Provider reasoning trace | Raw reasoning content explicitly returned by a model provider. It does not include hidden internal state that the provider does not expose. |
 | Disclosure level | Host-bounded setting controlling how much status, activity, developer data, or provider reasoning trace is visible. |
+| Conversation mode | Host configuration selecting one active Conversation per scope (`single`) or multiple user-manageable Conversations (`multiple`). |
+| Context profile | Named policy preset controlling which sources the Context Compiler may use and how it allocates the model token budget. |
+| Context segment | Internal, user-invisible group of complete turn groups used as a compaction and retrieval boundary. |
+| Working Ledger | Rebuildable structured state for active goals, constraints, corrections, decisions, open threads, and entity or Action references. |
+| Context View | Immutable, per-Run compilation of model input blocks selected under one token budget and permission snapshot. |
+| Context Manifest | Developer-facing explanation of which blocks entered a Context View, why they were selected, their token cost, and what was excluded. |
 
 ## Architecture
 
@@ -115,6 +122,30 @@ A host MAY adopt the framework in stages:
 
 Every stage MUST remain independently deployable.
 
+### Conversation topology and context profiles
+
+Single- and multi-conversation modes use the same `Conversation`, Runtime, event, and storage contracts. The Host supplies a scope key; `single` permits at most one active Conversation in that scope, while `multiple` permits creation, switching, renaming, archiving, and deletion.
+
+Conversation topology and context strategy are independent settings:
+
+```yaml
+conversation_mode: single | multiple
+context_profile: lite | balanced | durable
+cross_conversation:
+  memory: disabled | explicit | policy
+  history_retrieval: disabled | on_demand
+```
+
+Cross-conversation Memory and cross-conversation history retrieval are separate capabilities. Memory contains policy-approved durable information; history retrieval searches source Conversation records on demand.
+
+All profiles use one Context Compiler and one `ContextView` contract:
+
+- `lite`: authoritative Host facts, current input, pending Action state, and a bounded recent raw window. This baseline is available without M8.
+- `balanced`: `lite` plus a Working Ledger, rolling/segment summaries, relevant historical retrieval, and a Context Manifest. This profile requires M8.
+- `durable`: `balanced` plus immutable Context Segments, structured supersession and correction tracking, hybrid raw retrieval, derived-artifact invalidation, rebuild, and complete provenance. This profile requires M8 and is recommended for long-lived single-conversation assistants.
+
+Profiles are policy presets, not separate implementations. Switching profiles MUST preserve the raw Conversation. An upgrade to a richer profile builds derived artifacts before atomic activation; a downgrade stops using richer artifacts without deleting source history.
+
 ### Core entities
 
 | Entity | Purpose | Required relationships |
@@ -125,7 +156,11 @@ Every stage MUST remain independently deployable.
 | `Attachment` | Controlled image, audio, or file metadata | owner, media type, processing state, private locator |
 | `ToolInvocation` | Typed tool request and result | run, tool version, permission decision, audit reference |
 | `PendingAction` | Uncommitted host-side change proposal | schema version, payload, state, idempotency key |
+| `ContextSegment` | Internal compaction and retrieval unit | complete turn groups, source range, closure reason |
 | `SummarySegment` | Rebuildable context summary | source message range, summary version, validity state |
+| `WorkingLedger` | Rebuildable current task state | goals, constraints, corrections, open threads, references |
+| `ContextView` | Immutable per-Run model input | profile, permission snapshot, ordered context blocks |
+| `ContextManifest` | Context selection evidence | block sources, priorities, token cost, exclusions |
 | `MemoryRecord` | Explicit long-term information | provenance, scope, visibility, revision history |
 | `AuditEvent` | Security and debugging evidence | actor, operation, decision, redaction metadata |
 | `PluginState` | Installed plugin activation state | plugin version, contract range, configuration, migration state |
@@ -288,7 +323,7 @@ All modules except M0 build against M0 contracts. Every module MUST provide its 
 
 **Purpose:** execute one assistant run consistently across hosts.
 
-**Responsibilities:** conversation and run lifecycle, message persistence, model invocation, event emission, cancellation, retry, regeneration, reconciliation, and usage recording. MVP adapters are OpenAI-compatible and Mock.
+**Responsibilities:** conversation and run lifecycle, message persistence, Context View compilation through the configured profile, model invocation, event emission, cancellation, retry, regeneration, reconciliation, and usage recording. MVP adapters are OpenAI-compatible and Mock.
 
 **Acceptance:** user input is persisted before provider access; the runtime invokes capabilities only through M3; interrupted streams reconcile from persisted events; non-idempotent operations are never replayed automatically; adapters report reasoning visibility accurately; raw trace events are emitted only when both provider support and Host policy allow them.
 
@@ -301,6 +336,7 @@ All modules except M0 build against M0 contracts. Every module MUST provide its 
 ```ts
 interface AssistantHostAdapter {
   getActor(): Promise<ActorContext>;
+  getConversationScope(): Promise<ConversationScope>;
   getPageContext(scope: PageContextScope): Promise<PageContext>;
   authorize(request: PermissionRequest): Promise<PermissionDecision>;
   applyAction(action: ConfirmedAction): Promise<ActionApplyResult>;
@@ -308,7 +344,7 @@ interface AssistantHostAdapter {
 }
 ```
 
-**Acceptance:** missing capabilities are reported as disabled; denied permissions produce structured results; page context has a field allowlist and size budget; action application and refresh are explicit, testable callbacks.
+**Acceptance:** missing capabilities are reported as disabled; the Host supplies a stable Conversation scope; denied permissions produce structured results; page context has a field allowlist and size budget; action application and refresh are explicit, testable callbacks.
 
 ### M3. Tool Runtime and Essentials Pack
 
@@ -371,13 +407,21 @@ Required components include `AssistantShell`, `ConversationThread`, `UserMessage
 
 ### M8. Context Management Pack
 
-**Purpose:** keep long conversations usable within a model context budget.
+**Purpose:** compile a bounded, inspectable Context View for every Run while keeping long-lived Conversations usable and traceable.
 
-**Responsibilities:** token budgeting, segment summaries, a working summary, relevant historical retrieval, atomic tool-call groups, provenance, invalidation, rebuild, and context inspection.
+**Responsibilities:** profile selection, token budgeting, complete-turn grouping, Context Segments, a Working Ledger, immutable Segment Summaries, relevant historical retrieval, provenance, supersession, invalidation, rebuild, and Context Manifest generation.
 
-The package MUST NOT delete or rewrite original messages. Compression changes model input only. A summary is derived data, not long-term Memory and not a source of business truth. Structured host data remains authoritative.
+The Context Compiler assembles sources in policy order. System and safety contracts, current user input, authoritative Host facts, and current Action state are non-droppable. Recent raw turns and the Working Ledger have higher priority than retrieved history and old summaries. Lower-relevance summaries are removed first when the input budget is exhausted, and output/tool budgets are reserved before input assembly.
 
-**Acceptance:** over-budget conversations trigger summarization; failed summarization falls back to a bounded recent-message window with an explicit diagnostic; every summary identifies its source range and version; summaries can be rebuilt from original messages.
+A Context Segment MUST close only at a complete turn-group boundary. A turn group includes its user message, assistant tool requests, tool results, assistant response, Action proposal, user decision, and Host result. Topic changes, task completion, terminal Action state, long idle intervals, completed attachment processing, and token soft limits MAY close a Segment.
+
+The package MUST NOT delete or rewrite original messages. Compression changes model input only. A summary and Working Ledger are derived data, not long-term Memory and not sources of business truth. Structured Host data and the Action Store remain authoritative.
+
+Every derived artifact MUST include source ranges, schema and generator versions, validity state, and provenance references. Corrections and supersession records take priority over older summary claims. Attachment deletion, permission revocation, Memory deletion, Action-state changes, or source revision MUST invalidate or redact affected summaries, ledger entries, and indexes.
+
+Asynchronous compaction MUST use source revisions and compare-and-swap activation. A stale compaction result cannot become active. `raw_trace` events are never Context sources and are excluded from summaries, the Working Ledger, and retrieval indexes, even when separate trace retention is enabled.
+
+**Acceptance:** `lite`, `balanced`, and `durable` produce the same Context View schema; over-budget Conversations follow the active profile; failed summarization falls back to the `lite` source set with an explicit diagnostic; every summary can be rebuilt from original messages; Context Manifests explain selection, exclusion, token cost, truncation, and permission filtering; profile upgrades and downgrades preserve the raw Conversation and activate atomically.
 
 ### M9. Knowledge & Retrieval Pack
 
@@ -425,7 +469,7 @@ proposed -> editing <-> awaiting_confirmation -> applying -> applied
 
 **Purpose:** let contributors integrate, debug, and test without a live model or production data.
 
-**Responsibilities:** Mock model server, stream inspector, context/token inspector, tool playground, permission viewer, replay runner, plugin compatibility validator, fixed evaluation corpus, and failure simulation.
+**Responsibilities:** Mock model server, stream inspector, context-profile simulator, Context Manifest/token inspector, tool playground, permission viewer, replay runner, plugin compatibility validator, fixed evaluation corpus, and failure simulation.
 
 **Acceptance:** CI runs without provider credentials; a sanitized replay fixture reproduces a failed run; error simulation covers disconnect, timeout, malformed events, tool failure, permission denial, renderer failure, and attachment failure.
 
@@ -445,7 +489,7 @@ The repository SHOULD include domain-neutral examples for wellness logging, itin
 | --- | --- | --- |
 | Essentials | enabled | date/time, calculator, unit conversion, formatting, text cleanup, bounded page context |
 | Multimodal Input | disabled | image, voice, and file input lifecycle |
-| Context Management | disabled | token budget, summaries, historical retrieval, rebuild |
+| Context Management | disabled | `balanced` and `durable` profiles, segmentation, ledger, summaries, retrieval, invalidation, rebuild, and Context Manifest; core always provides `lite` |
 | Knowledge & Retrieval | disabled | web, URL, document, host knowledge, citations |
 | Memory | disabled | explicit scoped Memory with user controls |
 | Action Workspace | disabled | editable confirmed actions and idempotent host application |
@@ -523,6 +567,7 @@ The framework distinguishes three information classes:
 | Class | Authority | Retention rule |
 | --- | --- | --- |
 | Structured host data | host application | controlled by the host business and retention policy |
+| Context View | per-Run compiled input | immutable for its Run; reproducible from its Manifest where sources remain authorized |
 | Context summary | derived cache | rebuildable; never replaces or deletes original messages |
 | Memory | explicit persistent information | scoped, inspectable, editable, deletable, and authorized |
 
@@ -586,6 +631,8 @@ Parallel work rules:
 
 - schema validation with valid and invalid fixtures;
 - event replay with duplicates, sequence gaps, interruption, and reconciliation;
+- conversation-mode tests for single and multiple topology over the same Runtime and storage contracts;
+- context-profile tests for `lite`, `balanced`, and `durable`, including profile switching and atomic activation;
 - runtime lifecycle and provider error mapping;
 - Host Adapter allow, deny, timeout, conflict, and refresh behavior;
 - tool schema, permission, timeout, cancellation, and safe retry behavior;
@@ -594,7 +641,7 @@ Parallel work rules:
 - UI component, accessibility, responsive, and recovery tests;
 - disclosure tests for all six levels, provider capability mismatch, authorization denial, and raw-trace persistence defaults;
 - image, voice, file, and attachment lifecycle tests;
-- context summary trigger, failure, provenance, and rebuild tests;
+- context segmentation, summary trigger, correction/supersession, compaction race, invalidation, permission filtering, provenance, Manifest, and rebuild tests;
 - retrieval citations and external-data permission tests;
 - Memory scope and deletion tests;
 - Action state, reauthorization, idempotency, partial failure, and undo tests;
@@ -607,7 +654,7 @@ Parallel work rules:
 | Text conversation | M0, M1, M5, M6 | persisted input, streamed output, completed run |
 | Read-only tool | M0, M1, M3, M6, M12 | visible lifecycle, authorized execution, validated output |
 | Image upload failure | M5, M6, M7 | draft retained, retry available, clear error |
-| Long conversation | M1, M8, M13 | summary created, original history unchanged, inspector evidence |
+| Long single Conversation | M1, M8, M13 | selected profile compiles a bounded Context View, original history remains unchanged, Manifest explains inclusion and exclusion |
 | Confirmed write | M0, M2, M11, M12 | proposal, confirmation, host application, idempotency, audit |
 | Disabled plugin | M3, M4, M6 | no callable tool, safe renderer behavior, actionable diagnostic |
 | External retrieval | M6, M9, M12 | citation, freshness, permission, and budget enforcement |
@@ -626,6 +673,7 @@ The MVP is complete when:
 - [ ] At least one plugin contributes a tool, a renderer, and a confirmed Action without modifying core.
 - [ ] Every side-effecting operation passes through Action Workspace and host confirmation.
 - [ ] Context Management proves summary rebuild and unchanged original history.
+- [ ] The same Runtime supports `single` and `multiple` Conversation modes, and Context Management supports `lite`, `balanced`, and `durable` profiles through one compiler contract.
 - [ ] Stream interruption, upload failure, permission denial, provider failure, renderer failure, and partial Action failure have tested recovery paths.
 - [ ] Official packages can be enabled or disabled according to their policy.
 - [ ] CI runs conformance and end-to-end Mock scenarios without external credentials.

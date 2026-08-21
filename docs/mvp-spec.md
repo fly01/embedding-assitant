@@ -6,7 +6,7 @@
 - Status: draft implementation baseline
 - Last updated: 2026-08-21
 - Scope: minimum viable public framework specification intended for open-source release
-- Intended audience: framework maintainers, host-application developers, plugin authors, UI contributors, and reviewers
+- Intended audience: framework maintainers, Host integration authors, application developers, plugin authors, UI contributors, and reviewers
 
 This document defines the public MVP contract for Framed Assistant. It describes observable behavior, stable interfaces, module boundaries, conformance requirements, and release criteria. It does not prescribe private deployment details or a domain-specific data model.
 
@@ -14,7 +14,7 @@ This document defines the public MVP contract for Framed Assistant. It describes
 
 Framed Assistant is a framework for embedding a consistent, high-quality AI assistant into an existing application. It provides a shared conversation runtime, typed event protocol, host-controlled tools and actions, progressive capability packages, a Headless frontend SDK, and a production-ready default UI.
 
-The framework owns assistant behavior and protocol consistency. The host application retains authority over identity, private data, permissions, business validation, transactions, and committed writes. Plugins extend declared capabilities but cannot bypass that boundary.
+The framework owns assistant behavior and protocol consistency. The Host application retains authority over identity, private data, permissions, business validation, transactions, and committed writes. Declarative integrations, generated adapters, and plugins extend declared capabilities but cannot bypass that boundary.
 
 ## Normative language
 
@@ -34,11 +34,12 @@ The MVP MUST:
 2. Provide one event protocol, state model, error model, permission model, and audit model across applications.
 3. Provide both a polished default interface and an unstyled Headless interaction layer.
 4. Support progressive adoption of image, voice, file, tool, retrieval, memory, and confirmed-action capabilities.
-5. Let plugins add domain tools, context providers, actions, and renderers without modifying the core runtime.
+5. Let hosts add domain tools, context providers, actions, and renderers through a declarative Integration Manifest, a generated integration, or an optional custom plugin without modifying the core runtime.
 6. Keep business data access and final writes under host-application control.
 7. Preserve original conversation records when optional context summarization is enabled.
 8. Allow modules to be implemented and tested independently against shared fixtures.
 9. Support configurable single- or multi-conversation topology and configurable context profiles without creating separate runtimes.
+10. Allow a standard CRUD-style application to integrate without hand-writing a Domain Plugin.
 
 ## Non-goals
 
@@ -46,6 +47,7 @@ The MVP does not include:
 
 - an online third-party plugin marketplace;
 - arbitrary plugin code downloaded at runtime;
+- production-runtime scanning that automatically discovers and activates undeclared Host APIs or write operations;
 - browser automation as a general-purpose assistant capability;
 - arbitrary code execution;
 - payments, transfers, or irreversible financial operations;
@@ -67,7 +69,9 @@ The MVP does not include:
 | Tool | A typed capability callable by the runtime. A tool cannot directly exceed its declared permissions or side-effect class. |
 | Action | A typed proposal for a host-side business change. An action is not committed until the user confirms it and the host applies it. |
 | Capability package | An officially maintained, versioned package that applications explicitly enable, except for the required safety baseline. |
-| Plugin | A release-time-installed extension that contributes declared capabilities, context, tools, actions, or UI renderers. |
+| Host Integration Manifest | Declarative application configuration for context sources, tools, Actions, permissions, generic renderers, and adapter mappings. |
+| Integration Generator | Development/build-time tool that analyzes public application contracts and produces a reviewable Host Integration Manifest plus scaffolding. |
+| Plugin | Optional release-time-installed executable extension for capabilities that cannot be expressed safely through configuration or generated adapters. |
 | Headless SDK | Frontend state and behavior without visual styling. |
 | Context summary | Rebuildable derived text used to fit conversation history into a model context window. |
 | Memory | Persistent, scoped information intentionally retained for future runs under explicit policy. |
@@ -102,7 +106,7 @@ Host Adapter ── Framed Assistant protocol ── Headless SDK ── Default
 ### Authority boundary
 
 - The framework MUST NOT query a host database directly.
-- A plugin MUST NOT receive undeclared data access.
+- An integration or plugin MUST NOT receive undeclared data access.
 - A model MUST NOT commit a business write.
 - The host MUST authorize every protected read, external request, and proposed write.
 - The host MUST validate permissions and action payloads again at confirmation time.
@@ -117,7 +121,7 @@ A host MAY adopt the framework in stages:
 3. image, voice, and file input;
 4. configurable reasoning disclosure and visible tool activity;
 5. Context Management or Knowledge & Retrieval;
-6. Action Workspace and domain plugins;
+6. Action Workspace and declarative, generated, or custom domain integration;
 7. explicit Memory where appropriate.
 
 Every stage MUST remain independently deployable.
@@ -146,6 +150,21 @@ All profiles use one Context Compiler and one `ContextView` contract:
 
 Profiles are policy presets, not separate implementations. Switching profiles MUST preserve the raw Conversation. An upgrade to a richer profile builds derived artifacts before atomic activation; a downgrade stops using richer artifacts without deleting source history.
 
+### Host integration levels
+
+Every host provides a minimal Host Adapter boundary, but a custom Domain Plugin is optional. The framework supports four integration levels:
+
+| Level | Integration form | Capabilities |
+| --- | --- | --- |
+| `Level 0` | direct embed | Default chat, UI, Essentials, explicit page context, and no domain tools or writes. |
+| `Level 1` | declarative Host Integration Manifest | Configured context sources, OpenAPI/JSON-Schema tools, generic renderers, and reviewed Action mappings without custom plugin code. |
+| `Level 2` | generated integration | Development-time analysis of OpenAPI, schemas, routes, types, and permission metadata produces a reviewable Manifest, adapters, fixtures, and unresolved-risk report. |
+| `Level 3` | custom Domain Plugin | Executable extension for complex validation, multi-step transactions, custom retrieval, specialized renderers, third-party services, or compensating operations. |
+
+The minimal Host Adapter always owns actor identity, Conversation scope, authentication, authorization, final Action application, and data refresh. Generic SDK adapters MAY implement this boundary from approved configuration.
+
+The Integration Generator runs only during development or build workflows. It MAY propose read tools and write-proposal Actions, but it MUST NOT activate write operations automatically. Unresolved permissions, idempotency, transaction, cascading-delete, privacy, confirmation, or undo semantics fail closed and require human review.
+
 ### Core entities
 
 | Entity | Purpose | Required relationships |
@@ -163,6 +182,7 @@ Profiles are policy presets, not separate implementations. Switching profiles MU
 | `ContextManifest` | Context selection evidence | block sources, priorities, token cost, exclusions |
 | `MemoryRecord` | Explicit long-term information | provenance, scope, visibility, revision history |
 | `AuditEvent` | Security and debugging evidence | actor, operation, decision, redaction metadata |
+| `HostIntegrationState` | Active declarative/generated integration | Manifest version, review status, unresolved risks, adapter bindings |
 | `PluginState` | Installed plugin activation state | plugin version, contract range, configuration, migration state |
 
 `Message` records are authoritative conversation history. Summaries, search indexes, and frontend caches are derived data.
@@ -293,7 +313,7 @@ All modules except M0 build against M0 contracts. Every module MUST provide its 
 | M1 Runtime | M0 | Mock model and fake tool registry |
 | M2 Host Integration Bridge | M0 | Fake Host Adapter |
 | M3 Tool Runtime | M0 | scripted tools and fake policy decisions |
-| M4 Plugin System | M0 | sample manifests and renderer stubs |
+| M4 Integration and Plugin System | M0 | sample Integration Manifests, plugin manifests, and renderer stubs |
 | M5 Headless SDK | M0 | event replay server |
 | M6 Default UI | M0, M5 | story fixtures |
 | M7 Multimodal Input | M0, M5 | fake upload, ASR, OCR, and vision adapters |
@@ -329,7 +349,7 @@ All modules except M0 build against M0 contracts. Every module MUST provide its 
 
 ### M2. Host Integration Bridge
 
-**Purpose:** keep identity, application context, protected data, and committed writes under host control.
+**Purpose:** keep identity, application context, protected data, and committed writes under Host control while supporting both generic configuration-driven adapters and custom implementations.
 
 **Required Host Adapter operations:**
 
@@ -344,7 +364,7 @@ interface AssistantHostAdapter {
 }
 ```
 
-**Acceptance:** missing capabilities are reported as disabled; the Host supplies a stable Conversation scope; denied permissions produce structured results; page context has a field allowlist and size budget; action application and refresh are explicit, testable callbacks.
+**Acceptance:** missing capabilities are reported as disabled; the Host supplies a stable Conversation scope; denied permissions produce structured results; page context has a field allowlist and size budget; action application and refresh are explicit, testable callbacks; a `Level 1` application can implement the boundary through an approved Host Integration Manifest without custom Domain Plugin code.
 
 ### M3. Tool Runtime and Essentials Pack
 
@@ -371,15 +391,15 @@ Essentials includes date/time/time-zone operations, a calculator, unit conversio
 
 **Acceptance:** invalid input never executes; invalid output becomes a typed tool failure; automatic retry is limited to deterministic or read-only operations; default tools do not write business data or access the network.
 
-### M4. Plugin System
+### M4. Integration and Plugin System
 
-**Purpose:** add domain capabilities without modifying core modules.
+**Purpose:** register declarative or generated Host integrations and optional executable Domain Plugins without modifying core modules.
 
-Plugins are installed at release time through the host build or package manager. Installed plugins MAY be enabled or disabled at runtime through host configuration. The MVP MUST NOT download or execute arbitrary remote plugin code.
+Custom Domain Plugins are optional and are installed at release time through the Host build or package manager. Installed plugins MAY be enabled or disabled at runtime through Host configuration. The MVP MUST NOT download or execute arbitrary remote plugin code.
 
-**Responsibilities:** manifest validation, protocol compatibility, dependency checks, permission declarations, configuration schema, renderer registration, migration preflight, and fail-closed activation.
+**Responsibilities:** Integration Manifest and Plugin Manifest validation, protocol compatibility, dependency checks, review state, unresolved-risk gates, permission declarations, configuration schema, generic and custom renderer registration, migration preflight, enable/disable state, and fail-closed activation.
 
-**Acceptance:** incompatible plugins do not activate; disabled plugins expose no tools; a renderer failure uses a safe generic renderer; upgrade preflight leaves the previously deployed version active on failure.
+**Acceptance:** draft or unresolved Integration Manifests do not activate write mappings; incompatible plugins do not activate; disabled plugins expose no new tools or Actions; a renderer failure uses a safe generic renderer; upgrade preflight leaves the previously deployed version active on failure; historical content remains readable without an active custom renderer.
 
 ### M5. Frontend Headless SDK
 
@@ -445,23 +465,23 @@ Asynchronous compaction MUST use source revisions and compare-and-swap activatio
 
 ```text
 proposed -> editing <-> awaiting_confirmation -> applying -> applied
-                 |                |             |           |
-                 v                v             v           v
-             cancelled        expired        failed      undoing
-                                               |            |
-                                               v            v
-                                            retrying    undone | undo_failed
+editing -> cancelled
+awaiting_confirmation -> cancelled | expired | blocked_plugin_disabled
+applying -> failed -> retrying
+applied -> undoing -> undone | undo_failed
+blocked_plugin_disabled -> awaiting_confirmation  (compatible re-enable + revalidation)
+blocked_plugin_disabled -> cancelled | archived   (manual resolution)
 ```
 
-**Responsibilities:** typed proposals, schema-driven editing, confirmation, cancellation, conflict handling, idempotent application, partial results, retry, and optional undo.
+**Responsibilities:** typed proposals, schema-driven editing, confirmation, cancellation, plugin-disable blocking, conflict handling, idempotent application, partial results, retry, archival, and optional undo.
 
-**Acceptance:** the model can propose but cannot apply; confirmation rechecks authorization and validation; duplicate confirmation cannot duplicate a business write; undo is available only when the Host Adapter declares a compensating operation.
+**Acceptance:** the model can propose but cannot apply; confirmation rechecks authorization and validation; duplicate confirmation cannot duplicate a business write; undo is available only when the Host Adapter declares a compensating operation. Disabling a contributing plugin moves every not-yet-applying Pending Action to `blocked_plugin_disabled` without cancelling or executing it. Compatible re-enable requires revalidation before returning to `awaiting_confirmation`; permanent removal allows manual cancellation or archival. Applied history remains readable, and an Action already in `applying` records its eventual Host result rather than being silently interrupted.
 
 ### M12. Safety & Governance
 
 **Purpose:** enforce the minimum security and observability baseline.
 
-**Responsibilities:** permission classes, data scopes, sensitive-data redaction, cost and rate limits, timeouts, maximum tool calls, audit events, and plugin permission checks.
+**Responsibilities:** permission classes, data scopes, sensitive-data redaction, cost and rate limits, timeouts, maximum tool calls, audit events, and integration/plugin permission checks.
 
 **Acceptance:** minimum permission enforcement, write blocking, redaction, and audit contracts cannot be disabled; advanced quotas are configurable; audit records preserve debugging metadata without storing credentials, raw private attachments, or unredacted context.
 
@@ -469,17 +489,17 @@ proposed -> editing <-> awaiting_confirmation -> applying -> applied
 
 **Purpose:** let contributors integrate, debug, and test without a live model or production data.
 
-**Responsibilities:** Mock model server, stream inspector, context-profile simulator, Context Manifest/token inspector, tool playground, permission viewer, replay runner, plugin compatibility validator, fixed evaluation corpus, and failure simulation.
+**Responsibilities:** Mock model server, stream inspector, context-profile simulator, Context Manifest/token inspector, tool playground, permission viewer, Integration Generator, Manifest review report, generated adapter/fixture scaffolding, replay runner, plugin compatibility validator, fixed evaluation corpus, and failure simulation.
 
-**Acceptance:** CI runs without provider credentials; a sanitized replay fixture reproduces a failed run; error simulation covers disconnect, timeout, malformed events, tool failure, permission denial, renderer failure, and attachment failure.
+**Acceptance:** CI runs without provider credentials; a sanitized replay fixture reproduces a failed run; the Integration Generator never activates writes and reports unresolved security or transaction semantics; error simulation covers disconnect, timeout, malformed events, tool failure, permission denial, renderer failure, and attachment failure.
 
 ### M14. Reference Integrations and Migration Proof
 
 **Purpose:** prove that the public contracts are not tailored to one domain.
 
-The repository SHOULD include domain-neutral examples for wellness logging, itinerary planning, and household finance. One real or representative host MUST integrate the Host Adapter, default UI, and at least one confirmed action.
+The repository SHOULD include domain-neutral examples for wellness logging, itinerary planning, and household finance. The examples collectively cover direct embed, declarative Manifest, generated integration, and custom plugin paths. One real or representative Host MUST integrate the Host Adapter, default UI, and at least one confirmed Action.
 
-**Acceptance:** all examples use the same event, tool, action, and renderer contracts; no domain field is added to core schemas; renderer failure falls back safely; permission changes prevent confirmation; the example suite runs with Mock model and Fake Host Adapter fixtures.
+**Acceptance:** all examples use the same event, tool, Action, and renderer contracts; at least one business Action works without custom plugin code; no domain field is added to core schemas; renderer failure falls back safely; permission changes prevent confirmation; the example suite runs with Mock model and Fake Host Adapter fixtures.
 
 ## Official capability packages
 
@@ -496,9 +516,46 @@ The repository SHOULD include domain-neutral examples for wellness logging, itin
 | Safety & Governance | minimum baseline required | permission enforcement, write blocking, redaction, and audit; advanced limits are configurable |
 | Developer Toolkit | development only | Mock services, inspectors, replay, validation, evaluation, and failure simulation |
 
-## Plugin manifest and lifecycle
+## Host integration manifest and plugin lifecycle
 
-The minimum public manifest contains:
+### Host Integration Manifest
+
+A `Level 1` integration is declarative. A `Level 2` Integration Generator produces the same format with `review_status: draft` and an unresolved-risk report.
+
+```yaml
+application:
+  id: org.example.sample-app
+  conversation_mode: single
+  context_profile: durable
+
+context_sources:
+  - id: current_record
+    source: page_state
+    fields: [record_id, selected_date]
+
+tools:
+  - id: list_records
+    source: openapi
+    operation_id: listRecords
+    permission: sample.records.read
+    side_effect: read
+
+actions:
+  - id: create_record
+    source: openapi
+    operation_id: createRecord
+    permission: sample.records.write-proposal
+    confirmation: explicit
+    renderer: schema-form
+
+review_status: approved
+```
+
+The Manifest contains approved mappings, not arbitrary executable business code. Read tools and generic schema renderers MAY activate after validation. Every write-proposal mapping requires explicit review of authorization, validation, idempotency, transaction, confirmation, privacy, and optional undo semantics.
+
+### Custom Plugin Manifest
+
+The minimum `Level 3` custom plugin manifest contains:
 
 ```json
 {
@@ -516,18 +573,24 @@ The minimum public manifest contains:
 }
 ```
 
-Lifecycle requirements:
+### Lifecycle requirements
 
-1. Install through the host build or package manager.
+An Integration Manifest follows author/generate, review, validate, enable, revise, and disable states. A generated Manifest cannot leave `draft` until all blocking risks are resolved.
+
+Custom Plugin lifecycle requirements:
+
+1. Install through the Host build or package manager.
 2. Register the manifest.
 3. Validate protocol compatibility, dependencies, configuration, and permissions.
 4. Run migration preflight when required.
-5. Enable through host configuration.
+5. Enable through Host configuration.
 6. Disable without leaving callable tools or active renderers.
 7. Upgrade only after compatibility and migration checks pass.
-8. Roll back through the host release system if deployment fails.
+8. Roll back through the Host release system if deployment fails.
 
 Plugins MUST fail closed. A missing permission, incompatible protocol range, invalid schema, or failed migration prevents activation.
+
+When a plugin is disabled, every not-yet-applying Pending Action contributed by that plugin enters `blocked_plugin_disabled`. The framework MUST NOT cancel or execute it automatically. Compatible re-enable triggers permission, payload, schema, and version revalidation before the Action returns to `awaiting_confirmation`. Permanent removal allows manual cancellation or archival. Applied Actions remain readable through stored data and a generic renderer.
 
 ## Frontend UX and accessibility
 
@@ -555,6 +618,7 @@ Minimum behavior:
 - honor the configured disclosure level without inventing unavailable reasoning data;
 - show user-facing tool outcomes rather than internal function names;
 - make proposed actions editable before confirmation;
+- render `blocked_plugin_disabled` Actions as readable but non-confirmable, with compatible re-enable, manual cancel, and archival guidance;
 - provide accessible error, retry, cancellation, and permission-denied states;
 - meet WCAG 2.2 AA for the default web kit;
 - support reduced motion and 44 px minimum touch targets;
@@ -596,6 +660,7 @@ Cancelled actions and unverified model statements MUST NOT become Memory. Contex
 - Raw audio is ephemeral by default after transcription.
 - `raw_trace` requires explicit Host policy and viewer authorization, is excluded from normal logs, Memory, and Context Summary by default, and is not persisted unless the Host separately enables trace retention.
 - Raw-trace exports MUST be labelled as sensitive provider reasoning content.
+- Generated Host Integration Manifests remain `draft` until a reviewer resolves permission, privacy, idempotency, transaction, confirmation, cascading-delete, and undo risks. Runtime discovery MUST NOT activate undeclared Host operations.
 
 ## Versioning and compatibility
 
@@ -605,7 +670,7 @@ Cancelled actions and unverified model statements MUST NOT become Memory. Contex
 - Additive optional fields MAY be introduced in a compatible minor release.
 - Removing a field, changing its meaning, or changing required state transitions requires a new protocol major version.
 - Clients MUST tolerate unknown event types and optional fields.
-- Stored Actions, summaries, and plugin configuration MUST retain the schema version used to create them.
+- Stored Actions, summaries, Host Integration Manifests, and plugin configuration MUST retain the schema version used to create them.
 - Migration code MUST be deterministic, testable, and reversible through release rollback or explicit compensating migration.
 
 ## Parallel implementation plan
@@ -635,8 +700,10 @@ Parallel work rules:
 - context-profile tests for `lite`, `balanced`, and `durable`, including profile switching and atomic activation;
 - runtime lifecycle and provider error mapping;
 - Host Adapter allow, deny, timeout, conflict, and refresh behavior;
+- integration-level tests for direct embed, declarative Manifest, generated Manifest review, and custom Domain Plugin paths;
+- Integration Generator tests for read-only scaffolding, write-proposal review gates, unresolved-risk reporting, and zero runtime activation;
 - tool schema, permission, timeout, cancellation, and safe retry behavior;
-- plugin compatibility, disablement, migration preflight, and renderer failure;
+- integration/plugin compatibility, disablement, migration preflight, renderer failure, and `blocked_plugin_disabled` Pending Actions;
 - Headless reducers for every event type;
 - UI component, accessibility, responsive, and recovery tests;
 - disclosure tests for all six levels, provider capability mismatch, authorization denial, and raw-trace persistence defaults;
@@ -657,6 +724,8 @@ Parallel work rules:
 | Long single Conversation | M1, M8, M13 | selected profile compiles a bounded Context View, original history remains unchanged, Manifest explains inclusion and exclusion |
 | Confirmed write | M0, M2, M11, M12 | proposal, confirmation, host application, idempotency, audit |
 | Disabled plugin | M3, M4, M6 | no callable tool, safe renderer behavior, actionable diagnostic |
+| Disabled plugin with Pending Action | M4, M11, M12 | Action becomes `blocked_plugin_disabled`, never auto-cancels or executes, and requires revalidation after compatible re-enable |
+| Config-only application | M0, M2, M3, M4, M13 | approved Manifest supplies a read tool and confirmed Action without custom plugin code |
 | External retrieval | M6, M9, M12 | citation, freshness, permission, and budget enforcement |
 | Deleted Memory | M8, M10, M13 | record no longer enters context; audit remains |
 | Domain portability | M0, M4, M11, M14 | three examples introduce no domain fields into core |
@@ -670,14 +739,16 @@ The MVP is complete when:
 - [ ] A representative host embeds the default UI through a real Host Adapter.
 - [ ] Text, image/file attachment, and editable voice transcript flows work.
 - [ ] Streaming Markdown, all six disclosure levels, tool activity, citations, and Action cards render through public contracts.
-- [ ] At least one plugin contributes a tool, a renderer, and a confirmed Action without modifying core.
+- [ ] A `Level 1` Host Integration Manifest contributes a tool and a confirmed Action without custom plugin code.
+- [ ] A `Level 2` generated Manifest reports unresolved risks and cannot activate writes before review.
+- [ ] A sample `Level 3` Domain Plugin contributes a custom renderer or business handler without modifying core.
 - [ ] Every side-effecting operation passes through Action Workspace and host confirmation.
 - [ ] Context Management proves summary rebuild and unchanged original history.
 - [ ] The same Runtime supports `single` and `multiple` Conversation modes, and Context Management supports `lite`, `balanced`, and `durable` profiles through one compiler contract.
 - [ ] Stream interruption, upload failure, permission denial, provider failure, renderer failure, and partial Action failure have tested recovery paths.
 - [ ] Official packages can be enabled or disabled according to their policy.
 - [ ] CI runs conformance and end-to-end Mock scenarios without external credentials.
-- [ ] Integration, plugin-authoring, UI, testing, security, and migration documentation is published.
+- [ ] Direct-embed, Integration Manifest, Integration Generator, custom-plugin, UI, testing, security, and migration documentation is published.
 
 ## Deferred work
 

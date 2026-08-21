@@ -57,6 +57,7 @@ REQUIRED_HEADINGS = {
         "## Protocol",
         "## Module specifications",
         "## Official capability packages",
+        "## Host integration manifest and plugin lifecycle",
         "## Security and privacy",
         "## Conformance",
         "## MVP acceptance criteria",
@@ -91,6 +92,11 @@ REQUIRED_SPEC_TERMS = (
     "Context Compiler",
     "Context Manifest",
     "Working Ledger",
+    "Host Integration Manifest",
+    "Integration Generator",
+    "custom Domain Plugin is optional",
+    "MUST NOT activate write operations automatically",
+    "blocked_plugin_disabled",
     "release time",
     "runtime",
     "MUST NOT delete or rewrite original messages",
@@ -120,6 +126,13 @@ CONTEXT_PROFILES = (
     "lite",
     "balanced",
     "durable",
+)
+
+HOST_INTEGRATION_LEVELS = (
+    "Level 0",
+    "Level 1",
+    "Level 2",
+    "Level 3",
 )
 
 MARKDOWN_LINK = re.compile(r"\[[^\]]+\]\(([^)]+)\)")
@@ -194,7 +207,7 @@ def main() -> int:
 
     try:
         package_section = spec.split("## Official capability packages", 1)[1].split(
-            "## Plugin manifest and lifecycle", 1
+            "## Host integration manifest and plugin lifecycle", 1
         )[0]
     except IndexError:
         package_section = ""
@@ -241,6 +254,24 @@ def main() -> int:
         failures.append(
             "docs/mvp-spec.md: context profile definitions must contain exactly lite, balanced, "
             f"and durable in order (found {profile_rows})"
+        )
+
+    try:
+        integration_section = spec.split("### Host integration levels", 1)[1].split(
+            "### Core entities", 1
+        )[0]
+    except IndexError:
+        integration_section = ""
+    integration_rows = tuple(
+        match.group(1)
+        for match in re.finditer(
+            r"^\| `([^`]+)` \|", integration_section, flags=re.MULTILINE
+        )
+    )
+    if integration_rows != HOST_INTEGRATION_LEVELS:
+        failures.append(
+            "docs/mvp-spec.md: Host integration table must contain exactly Level 0 through "
+            f"Level 3 in order (found {integration_rows})"
         )
 
     if failures:

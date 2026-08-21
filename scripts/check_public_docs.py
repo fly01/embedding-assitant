@@ -1,0 +1,195 @@
+#!/usr/bin/env python3
+"""Validate that public documentation is self-contained and release-ready."""
+
+from __future__ import annotations
+
+import re
+import sys
+from pathlib import Path
+
+
+ROOT = Path(__file__).resolve().parents[1]
+PUBLIC_DOCS = (
+    ROOT / "README.md",
+    ROOT / "DESIGN.md",
+    ROOT / "docs" / "mvp-spec.md",
+)
+
+FORBIDDEN_PATTERNS = {
+    "absolute user-home path": re.compile(
+        r"(?:/Users/|/home/|[A-Za-z]:\\Users\\|~/)", re.IGNORECASE
+    ),
+    "local file URI": re.compile(r"file://", re.IGNORECASE),
+    "unexplained parent-workspace reference": re.compile(
+        r"\.\./(?!DESIGN\.md(?:\b|#)|README\.md(?:\b|#))", re.IGNORECASE
+    ),
+}
+
+REQUIRED_HEADINGS = {
+    "README.md": (
+        "# Framed Assistant",
+        "## Project status",
+        "## Why Framed Assistant?",
+        "## Architecture",
+        "## MVP scope",
+        "## Documentation",
+        "## Contributing",
+        "## License",
+    ),
+    "DESIGN.md": (
+        "# Design",
+        "## Source of truth",
+        "## Design principles",
+        "## Components",
+        "## Accessibility",
+        "## Implementation constraints",
+        "## Open questions",
+    ),
+    "mvp-spec.md": (
+        "# Framed Assistant MVP Specification",
+        "## Status",
+        "## Abstract",
+        "## Normative language",
+        "## Goals",
+        "## Non-goals",
+        "## Terminology",
+        "## Architecture",
+        "## Protocol",
+        "## Module specifications",
+        "## Official capability packages",
+        "## Security and privacy",
+        "## Conformance",
+        "## MVP acceptance criteria",
+    ),
+}
+
+REQUIRED_SPEC_TERMS = (
+    "M0",
+    "M14",
+    "Headless",
+    "Multimodal Input",
+    "Context Management",
+    "Knowledge & Retrieval",
+    "Memory",
+    "Action Workspace",
+    "Safety & Governance",
+    "Developer Toolkit",
+    "image",
+    "voice",
+    "thinking status",
+    "raw chain-of-thought",
+    "release time",
+    "runtime",
+    "MUST NOT delete or rewrite original messages",
+)
+
+OFFICIAL_CAPABILITY_PACKAGES = (
+    "Essentials",
+    "Multimodal Input",
+    "Context Management",
+    "Knowledge & Retrieval",
+    "Memory",
+    "Action Workspace",
+    "Safety & Governance",
+    "Developer Toolkit",
+)
+
+MARKDOWN_LINK = re.compile(r"\[[^\]]+\]\(([^)]+)\)")
+
+
+def line_number(text: str, offset: int) -> int:
+    return text.count("\n", 0, offset) + 1
+
+
+def validate_file(path: Path, failures: list[str]) -> str:
+    if not path.exists():
+        failures.append(f"missing required public document: {path.relative_to(ROOT)}")
+        return ""
+
+    text = path.read_text(encoding="utf-8")
+    relative = path.relative_to(ROOT)
+
+    for label, pattern in FORBIDDEN_PATTERNS.items():
+        for match in pattern.finditer(text):
+            failures.append(
+                f"{relative}:{line_number(text, match.start())}: forbidden {label}: {match.group(0)!r}"
+            )
+
+    for number, line in enumerate(text.splitlines(), start=1):
+        if line.endswith((" ", "\t")):
+            failures.append(f"{relative}:{number}: trailing whitespace")
+
+    if text.count("```") % 2:
+        failures.append(f"{relative}: unbalanced fenced code block")
+
+    for heading in REQUIRED_HEADINGS[path.name]:
+        if heading not in text:
+            failures.append(f"{relative}: missing required heading {heading!r}")
+
+    for match in MARKDOWN_LINK.finditer(text):
+        target = match.group(1).strip()
+        if not target or target.startswith(("http://", "https://", "#", "mailto:")):
+            continue
+        target_path = target.split("#", 1)[0]
+        resolved = (path.parent / target_path).resolve()
+        try:
+            resolved.relative_to(ROOT)
+        except ValueError:
+            failures.append(
+                f"{relative}:{line_number(text, match.start())}: local link escapes repository {target!r}"
+            )
+            continue
+        if not resolved.exists():
+            failures.append(
+                f"{relative}:{line_number(text, match.start())}: broken local link {target!r}"
+            )
+
+    return text
+
+
+def main() -> int:
+    failures: list[str] = []
+    texts = {path.name: validate_file(path, failures) for path in PUBLIC_DOCS}
+    spec = texts.get("mvp-spec.md", "")
+
+    module_ids = re.findall(r"^### M(\d+)\.", spec, flags=re.MULTILINE)
+    expected_ids = [str(index) for index in range(15)]
+    if module_ids != expected_ids:
+        failures.append(
+            "docs/mvp-spec.md: module headings must appear exactly once and in order from M0 to M14 "
+            f"(found {module_ids})"
+        )
+
+    for term in REQUIRED_SPEC_TERMS:
+        if term not in spec:
+            failures.append(f"docs/mvp-spec.md: missing preserved requirement {term!r}")
+
+    try:
+        package_section = spec.split("## Official capability packages", 1)[1].split(
+            "## Plugin manifest and lifecycle", 1
+        )[0]
+    except IndexError:
+        package_section = ""
+    package_rows = tuple(
+        match.group(1)
+        for match in re.finditer(r"^\| ([^|]+?) \|", package_section, flags=re.MULTILINE)
+        if match.group(1) not in {"Package", "---"}
+    )
+    if package_rows != OFFICIAL_CAPABILITY_PACKAGES:
+        failures.append(
+            "docs/mvp-spec.md: official capability package table must contain exactly the eight "
+            f"approved packages in order (found {package_rows})"
+        )
+
+    if failures:
+        print("Public documentation check failed:")
+        for failure in failures:
+            print(f"- {failure}")
+        return 1
+
+    print("Public documentation check passed for README.md, DESIGN.md, and docs/mvp-spec.md.")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

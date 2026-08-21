@@ -51,7 +51,7 @@ The MVP does not include:
 - autonomous background agents that operate without an active user request;
 - multi-agent orchestration;
 - one shared business schema across unrelated host applications;
-- raw chain-of-thought disclosure;
+- guaranteed access to hidden reasoning that a model provider does not return;
 - official UI kits for every frontend framework.
 
 ## Terminology
@@ -70,6 +70,9 @@ The MVP does not include:
 | Headless SDK | Frontend state and behavior without visual styling. |
 | Context summary | Rebuildable derived text used to fit conversation history into a model context window. |
 | Memory | Persistent, scoped information intentionally retained for future runs under explicit policy. |
+| Reasoning summary | Provider-supplied or separately generated user-readable explanation of key reasoning steps. |
+| Provider reasoning trace | Raw reasoning content explicitly returned by a model provider. It does not include hidden internal state that the provider does not expose. |
+| Disclosure level | Host-bounded setting controlling how much status, activity, developer data, or provider reasoning trace is visible. |
 
 ## Architecture
 
@@ -105,7 +108,7 @@ A host MAY adopt the framework in stages:
 1. text conversation with the default assistant shell;
 2. Host Adapter and deterministic Essentials tools;
 3. image, voice, and file input;
-4. visible thinking status and tool activity;
+4. configurable reasoning disclosure and visible tool activity;
 5. Context Management or Knowledge & Retrieval;
 6. Action Workspace and domain plugins;
 7. explicit Memory where appropriate.
@@ -152,6 +155,10 @@ interface AssistantEvent<TPayload = unknown> {
     | "content.delta"
     | "message.completed"
     | "thinking.status"
+    | "reasoning.summary.delta"
+    | "reasoning.trace.delta"
+    | "reasoning.trace.completed"
+    | "reasoning.trace.unavailable"
     | "attachment.updated"
     | "tool.requested"
     | "tool.started"
@@ -179,7 +186,11 @@ Normative event behavior:
 - A sequence gap MUST trigger reconciliation rather than silent state mutation.
 - A completed run MUST contain visible assistant text, a tool result, or an action proposal.
 - An empty or prematurely closed stream MUST NOT be presented as a successful answer.
-- `thinking.status` MAY contain safe stage labels, progress summaries, or elapsed time. It MUST NOT contain raw chain-of-thought.
+- `thinking.status` MAY contain stage labels, contextual progress, or elapsed time.
+- Every model adapter MUST declare `reasoning_visibility` as `none`, `summary`, or `trace`.
+- When the configured disclosure level is `raw_trace`, the client MAY display the complete provider reasoning trace exactly as returned by an adapter that declares `trace` support.
+- The framework MUST NOT synthesize a raw trace when the provider does not return one; it MUST emit `reasoning.trace.unavailable` instead.
+- `raw_trace` MUST be disabled by default and requires explicit Host policy plus viewer authorization.
 
 ### Message content parts
 
@@ -194,7 +205,9 @@ The MVP MUST support typed message parts for:
 - citations;
 - action cards;
 - recoverable errors;
-- safe thinking status.
+- thinking status;
+- reasoning summaries;
+- provider reasoning traces when enabled.
 
 A renderer that does not recognize a content type MUST use a safe generic representation rather than fail the entire conversation.
 
@@ -277,7 +290,7 @@ All modules except M0 build against M0 contracts. Every module MUST provide its 
 
 **Responsibilities:** conversation and run lifecycle, message persistence, model invocation, event emission, cancellation, retry, regeneration, reconciliation, and usage recording. MVP adapters are OpenAI-compatible and Mock.
 
-**Acceptance:** user input is persisted before provider access; the runtime invokes capabilities only through M3; interrupted streams reconcile from persisted events; non-idempotent operations are never replayed automatically; provider output cannot expose raw chain-of-thought.
+**Acceptance:** user input is persisted before provider access; the runtime invokes capabilities only through M3; interrupted streams reconcile from persisted events; non-idempotent operations are never replayed automatically; adapters report reasoning visibility accurately; raw trace events are emitted only when both provider support and Host policy allow them.
 
 ### M2. Host Integration Bridge
 
@@ -336,7 +349,7 @@ Plugins are installed at release time through the host build or package manager.
 
 **Purpose:** provide reusable frontend behavior without imposing a visual design.
 
-**Responsibilities:** conversation state, event replay, pagination, drafts, attachments, thinking status, tool activity, citations, action state, cancellation, retry, and reconnection.
+**Responsibilities:** conversation state, event replay, pagination, drafts, attachments, disclosure level, thinking status, reasoning summaries, provider trace state, tool activity, citations, action state, cancellation, retry, and reconnection.
 
 **Acceptance:** the package renders no UI; all state is serializable; reducers handle duplicate events and interrupted streams; an application can replace every visible component while preserving behavior.
 
@@ -346,7 +359,7 @@ Plugins are installed at release time through the host build or package manager.
 
 Required components include `AssistantShell`, `ConversationThread`, `UserMessage`, `AssistantMessage`, `StreamingMarkdown`, `ThinkingDisclosure`, `ToolActivity`, `Composer`, `ActionCard`, `CitationList`, `AttachmentPreview`, `ErrorBanner`, `StopButton`, `RegenerateButton`, and plugin renderer slots.
 
-**Acceptance:** panel, drawer, inline, and full-page modes work at mobile and desktop widths; keyboard and screen-reader paths cover every operation; internal tool identifiers remain hidden outside developer mode; the thinking status UI never exposes raw chain-of-thought.
+**Acceptance:** panel, drawer, inline, and full-page modes work at mobile and desktop widths; keyboard and screen-reader paths cover every operation; internal tool identifiers remain hidden below developer level; all six disclosure levels render distinctly; `raw_trace` shows the full provider-supplied trace when available and an explicit unavailable state otherwise.
 
 ### M7. Multimodal Input Pack
 
@@ -476,13 +489,26 @@ Plugins MUST fail closed. A missing permission, incompatible protocol range, inv
 
 The default UI MUST follow the design contract in [DESIGN.md](../DESIGN.md).
 
+### Reasoning disclosure levels
+
+| Level | Visible information |
+| --- | --- |
+| `hidden` | No reasoning or activity disclosure surface. |
+| `status` | Short stage labels such as “Analyzing attachment”. |
+| `contextual` | The authorized attachment, entity, or scope being analyzed. |
+| `activity` | User-facing tool names, completion summaries, citations, and elapsed time. |
+| `developer` | Redacted tool inputs and outputs, event sequence, context composition, token use, model metadata, and correlation IDs. |
+| `raw_trace` | The complete provider reasoning trace exactly as returned by a trace-capable model adapter. |
+
+The Host sets the maximum permitted level; an authorized viewer MAY select any level at or below that maximum. The default level is `status`. `raw_trace` is opt-in, visually marked as sensitive provider output, and unavailable when the adapter declares `none` or `summary` reasoning visibility.
+
 Minimum behavior:
 
 - preserve user drafts across recoverable failures;
 - distinguish history loading, sending, streaming, tool execution, upload, transcription, and action application;
 - auto-follow streaming only while the user remains at the bottom;
 - preserve the reading anchor when older history is prepended;
-- use safe thinking status rather than raw chain-of-thought;
+- honor the configured disclosure level without inventing unavailable reasoning data;
 - show user-facing tool outcomes rather than internal function names;
 - make proposed actions editable before confirmation;
 - provide accessible error, retry, cancellation, and permission-denied states;
@@ -523,6 +549,8 @@ Cancelled actions and unverified model statements MUST NOT become Memory. Contex
 - Every committed Action MUST have an idempotency key and audit record.
 - Partial failure MUST identify successful, failed, and retryable items.
 - Raw audio is ephemeral by default after transcription.
+- `raw_trace` requires explicit Host policy and viewer authorization, is excluded from normal logs, Memory, and Context Summary by default, and is not persisted unless the Host separately enables trace retention.
+- Raw-trace exports MUST be labelled as sensitive provider reasoning content.
 
 ## Versioning and compatibility
 
@@ -564,6 +592,7 @@ Parallel work rules:
 - plugin compatibility, disablement, migration preflight, and renderer failure;
 - Headless reducers for every event type;
 - UI component, accessibility, responsive, and recovery tests;
+- disclosure tests for all six levels, provider capability mismatch, authorization denial, and raw-trace persistence defaults;
 - image, voice, file, and attachment lifecycle tests;
 - context summary trigger, failure, provenance, and rebuild tests;
 - retrieval citations and external-data permission tests;
@@ -593,7 +622,7 @@ The MVP is complete when:
 - [ ] M1-M14 satisfy their module acceptance requirements.
 - [ ] A representative host embeds the default UI through a real Host Adapter.
 - [ ] Text, image/file attachment, and editable voice transcript flows work.
-- [ ] Streaming Markdown, thinking status, tool activity, citations, and Action cards render through public contracts.
+- [ ] Streaming Markdown, all six disclosure levels, tool activity, citations, and Action cards render through public contracts.
 - [ ] At least one plugin contributes a tool, a renderer, and a confirmed Action without modifying core.
 - [ ] Every side-effecting operation passes through Action Workspace and host confirmation.
 - [ ] Context Management proves summary rebuild and unchanged original history.

@@ -35,7 +35,7 @@ The framework manages assistant behavior. The host application keeps control of 
 - **Two-layer frontend:** a polished default UI is built on a replaceable Headless state layer.
 - **Progressive capabilities:** applications enable only the packages they need.
 - **Confirmed side effects:** business writes are typed Action proposals until the user confirms them and the host applies them.
-- **Safe activity visibility:** the UI may show thinking status, stage summaries, and tool progress, but never raw chain-of-thought.
+- **Configurable reasoning disclosure:** hosts can choose from hidden status through contextual activity, developer diagnostics, and an opt-in `raw_trace` level that displays the complete reasoning trace returned by a capable model provider.
 - **Rebuildable context summaries:** Context Management never deletes or rewrites original messages.
 - **Controlled plugins:** plugins are installed during a release and may be enabled or disabled at runtime; arbitrary remote code installation is out of scope for the MVP.
 
@@ -92,7 +92,7 @@ A host can adopt Framed Assistant incrementally:
 1. Embed the default text assistant.
 2. Implement the Host Adapter and enable deterministic Essentials tools.
 3. Add image, voice, and file input.
-4. Add thinking status, tool activity, and Context Management.
+4. Add configurable reasoning disclosure, tool activity, and Context Management.
 5. Add retrieval, citations, and explicit Memory where appropriate.
 6. Add confirmed business actions and domain plugins.
 
@@ -107,6 +107,7 @@ No stage requires the host to surrender authorization or transaction control.
 - Provider credentials remain server-side.
 - Private attachments use host-authorized access.
 - Logs and replay fixtures exclude secrets, raw private attachments, and unredacted model context.
+- Raw provider reasoning traces are disabled by default and require explicit Host policy, viewer authorization, and a separate retention decision.
 
 Security-sensitive behavior is defined normatively in the [Security and privacy section](docs/mvp-spec.md#security-and-privacy).
 

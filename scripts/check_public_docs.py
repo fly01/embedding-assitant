@@ -77,7 +77,14 @@ REQUIRED_SPEC_TERMS = (
     "image",
     "voice",
     "thinking status",
-    "raw chain-of-thought",
+    "raw_trace",
+    "reasoning.trace.delta",
+    "reasoning.trace.unavailable",
+    "reasoning_visibility",
+    "MUST NOT synthesize a raw trace",
+    "requires explicit Host policy plus viewer authorization",
+    "is excluded from normal logs, Memory, and Context Summary by default",
+    "is not persisted unless the Host separately enables trace retention",
     "release time",
     "runtime",
     "MUST NOT delete or rewrite original messages",
@@ -92,6 +99,15 @@ OFFICIAL_CAPABILITY_PACKAGES = (
     "Action Workspace",
     "Safety & Governance",
     "Developer Toolkit",
+)
+
+REASONING_DISCLOSURE_LEVELS = (
+    "hidden",
+    "status",
+    "contextual",
+    "activity",
+    "developer",
+    "raw_trace",
 )
 
 MARKDOWN_LINK = re.compile(r"\[[^\]]+\]\(([^)]+)\)")
@@ -179,6 +195,24 @@ def main() -> int:
         failures.append(
             "docs/mvp-spec.md: official capability package table must contain exactly the eight "
             f"approved packages in order (found {package_rows})"
+        )
+
+    try:
+        disclosure_section = spec.split("### Reasoning disclosure levels", 1)[1].split(
+            "Minimum behavior:", 1
+        )[0]
+    except IndexError:
+        disclosure_section = ""
+    disclosure_rows = tuple(
+        match.group(1)
+        for match in re.finditer(
+            r"^\| `([^`]+)` \|", disclosure_section, flags=re.MULTILINE
+        )
+    )
+    if disclosure_rows != REASONING_DISCLOSURE_LEVELS:
+        failures.append(
+            "docs/mvp-spec.md: reasoning disclosure table must contain exactly the six approved "
+            f"levels in order (found {disclosure_rows})"
         )
 
     if failures:

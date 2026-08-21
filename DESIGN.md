@@ -12,7 +12,7 @@
 
 - Personality: dependable, calm, application-native, precise.
 - Trust signals: explicit permissions and confirmation states, visible tool progress, recoverable stream/upload errors, traceable summaries, and citations when external information is used.
-- Avoid: generic chatbot chrome, decorative AI gradients, raw internal tool names, raw chain-of-thought, hidden writes, irreversible agent actions, and assistant styling that fights the host application.
+- Avoid: generic chatbot chrome, decorative AI gradients, accidental reasoning-trace exposure, hidden writes, irreversible agent actions, and assistant styling that fights the host application.
 
 ## Product goals
 
@@ -39,7 +39,7 @@
 
 - Principle 1: the framework owns assistant behavior consistency; the host application owns business authority.
 - Principle 2: default UI is polished enough to ship, while the headless layer lets an application replace every visible component without reimplementing state behavior.
-- Principle 3: progressive disclosure starts with the user-facing result, then exposes safe activity summaries, tools, sources, and editable actions as needed.
+- Principle 3: reasoning disclosure is progressive and Host-bounded, ranging from hidden status through contextual activity and developer diagnostics to an explicitly enabled raw provider trace.
 - Principle 4: model output is not a committed business change; side effects pass through typed actions, confirmation policy, host validation, idempotency, and audit.
 - Principle 5: context summaries are rebuildable model-input caches, not memory and not business truth. Compression never deletes or rewrites original messages.
 - Principle 6: plugins extend declared contracts and slots; they cannot bypass host data access, permissions, transactions, or audit.
@@ -57,16 +57,29 @@
 ## Components
 
 - Existing patterns to preserve as behavioral evidence: streaming Markdown, paginated message history, multimodal composition, editable voice transcripts, visible tool activity, resumable streams, attachment previews, and editable confirm/cancel action cards.
-- New/changed components: headless assistant store, assistant shell, conversation thread, message-part renderers, multimodal composer, thinking disclosure, tool activity, citations, action workspace, error recovery, plugin slots, host-context badges, and developer inspectors.
-- Variants and states: inline, drawer, side panel, full-screen tab, and floating panel; signed out, disabled by host, loading history, streaming, interrupted, offline, uploading, transcribing, permission denied, awaiting confirmation, applying, partial failure, applied, cancelled, and undo available.
+- New/changed components: headless assistant store, assistant shell, conversation thread, message-part renderers, multimodal composer, reasoning disclosure, tool activity, citations, action workspace, error recovery, plugin slots, host-context badges, and developer inspectors.
+- Variants and states: inline, drawer, side panel, full-screen tab, and floating panel; signed out, disabled by host, loading history, streaming, interrupted, offline, uploading, transcribing, permission denied, reasoning unavailable, raw trace visible, awaiting confirmation, applying, partial failure, applied, cancelled, and undo available.
 - Token/component ownership: the framework owns semantic token names and slot contracts; host applications override values or renderers without forking runtime state.
+
+### Reasoning disclosure
+
+| Level | Default presentation |
+| --- | --- |
+| `hidden` | No reasoning disclosure control or content. |
+| `status` | Short stage label and optional elapsed time. This is the framework default. |
+| `contextual` | Authorized attachment, entity, or task context. |
+| `activity` | User-facing tools, completion summaries, sources, and timing. |
+| `developer` | Redacted parameters, event sequence, context composition, token usage, model metadata, and correlation IDs. |
+| `raw_trace` | Complete provider reasoning trace exactly as returned by a trace-capable adapter. |
+
+The Host defines the maximum permitted level. `raw_trace` is disabled by default, carries a persistent sensitive-content warning while visible, and shows an explicit unavailable state when the provider does not expose a trace. It is not added to normal logs, Memory, or Context Summary, and it is not persisted unless the Host separately enables trace retention.
 
 ## Accessibility
 
 - Target standard: WCAG 2.2 AA for the default web component kit.
-- Keyboard/focus behavior: composer, attachment controls, stop/regenerate, thinking disclosure, tool details, citations, and action controls must be reachable, labelled, and visibly focused.
+- Keyboard/focus behavior: composer, attachment controls, stop/regenerate, reasoning disclosure, tool details, citations, and action controls must be reachable, labelled, and visibly focused.
 - Contrast/readability: permission, confirmation, and error states never rely on color alone.
-- Screen-reader semantics: streaming and tool status use restrained live regions; disclosures expose expanded state; action cards announce current state and available operations.
+- Screen-reader semantics: streaming and tool status use restrained live regions; reasoning disclosures expose their current level and expanded state; raw trace does not continuously flood a live region; action cards announce current state and available operations.
 - Reduced motion and sensory considerations: waveform, loading, and streaming animations simplify or pause under reduced-motion preferences.
 
 ## Responsive behavior
@@ -88,7 +101,7 @@
 
 - Tone: concise, calm, and transparent. The first reference locale is Simplified Chinese, but all default copy MUST be replaceable through localization resources; domain terminology comes from the host plugin.
 - Terminology: “助手”, “正在思考”, “正在查看”, “待确认”, “确认”, “修改”, “取消”, “已应用”, “恢复回复”, “引用来源”.
-- Microcopy rules: describe user-facing activity and outcomes rather than internal function names. Thinking UI may show stage summaries, elapsed time, and tool intent, but never raw chain-of-thought.
+- Microcopy rules: below developer level, describe user-facing activity and outcomes rather than internal function names. `raw_trace` is labelled as verbatim provider reasoning, not verified fact or framework-authored explanation.
 
 ## Implementation constraints
 
@@ -96,7 +109,7 @@
 - Design-token constraints: semantic CSS variables and typed slot props; no application-specific palette in framework packages.
 - Performance constraints: paginated or virtualized history, bounded attachment previews, stream backpressure, token-budgeted context assembly, and no full-resolution image decoding in message lists.
 - Compatibility constraints: authenticated private-data hosts, resumable event streams, host-controlled media URLs, mobile Safari attachment behavior, and plugins installed at release time but enabled or disabled at runtime.
-- Test/screenshot expectations: contract fixtures, reducer tests, component interaction and accessibility tests, mobile/desktop visual smoke checks, disconnect recovery, permission denial, and action idempotency.
+- Test/screenshot expectations: contract fixtures, reducer tests, all six reasoning disclosure levels, trace-unavailable and authorization states, component interaction and accessibility tests, mobile/desktop visual smoke checks, disconnect recovery, permission denial, and action idempotency.
 
 ## Open questions
 

@@ -71,6 +71,10 @@ test("streams a conversation while the Host owns conversation navigation", async
     request,
     `Thread A ${Date.now()}`,
   );
+  await expect(page.locator(".assistant-shell")).toHaveAttribute(
+    "data-layout",
+    "viewport",
+  );
   await page
     .getByRole("textbox", { name: "Message" })
     .fill("Hello from the browser");
@@ -115,6 +119,20 @@ test("streams a conversation while the Host owns conversation navigation", async
       .locator(".composer-tools")
       .evaluate((element) => getComputedStyle(element).flexDirection),
   ).toBe("column");
+});
+
+test("keeps mobile editable controls at a stable readable scale", async ({
+  page,
+  request,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await openConversation(page, request, `Mobile input ${Date.now()}`);
+  const messageInput = page.getByRole("textbox", { name: "Message" });
+  expect(
+    await messageInput.evaluate((element) =>
+      Number.parseFloat(getComputedStyle(element).fontSize),
+    ),
+  ).toBeGreaterThanOrEqual(16);
 });
 
 test("keeps attachment, Lightbox, live dictation, and voice-message behavior consistent", async ({

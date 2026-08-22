@@ -113,6 +113,8 @@ import "./host-theme.css";
 
 Use `show-settings="false"` when Context, execution, and disclosure controls belong in a Host maintainer/settings surface rather than the ordinary chat screen.
 
+For an assistant inside a Host drawer, tab, or fixed navigation shell, assign a definite height to its parent and use `shell-layout="container"`. The assistant fills that block; the Host reserves navigation and safe-area space exactly once. Standalone/reference surfaces keep the default `viewport` layout.
+
 The `labels` prop accepts typed partial overrides for Host localization while preserving complete English defaults:
 
 ```vue
@@ -125,6 +127,7 @@ The default Composer follows fit-assistant: the text field needs no separate tex
 
 ```vue
 <AssistantShell
+  shell-layout="container"
   composer-toolbar-placement="below"
   :composer-capabilities="{
     attachments: true,
@@ -138,6 +141,8 @@ The default Composer follows fit-assistant: the text field needs no separate tex
 ```
 
 With `auto`, an available embedded-model/API `DictationAdapter` makes the shared microphone perform live transcription; otherwise an enabled voice-message capability records private audio. The mic never claims live transcription without an adapter. Selected images render as compact clickable thumbnails and open the authorized Lightbox before send; selected files use bounded previewable cards.
+
+On mobile and coarse-pointer clients, editable framework controls keep a computed font size of at least `16px` to avoid focus-driven readability zoom while preserving normal browser pinch zoom.
 
 To use an OpenAI-compatible Chat Completions endpoint:
 

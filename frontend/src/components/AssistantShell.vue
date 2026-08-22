@@ -9,6 +9,7 @@ import {
 } from "../composer";
 import type { DictationAdapter } from "../dictation";
 import { DEFAULT_ASSISTANT_LABELS, type AssistantLabels } from "../labels";
+import type { AssistantShellLayout } from "../shell";
 import { createAssistantStore } from "../store";
 import Composer from "./Composer.vue";
 import ConversationThread from "./ConversationThread.vue";
@@ -23,6 +24,7 @@ const props = withDefaults(
     composerCapabilities?: Partial<ComposerCapabilities>;
     composerToolbarPlacement?: ComposerToolbarPlacement;
     composerVoiceToolMode?: ComposerVoiceToolMode;
+    shellLayout?: AssistantShellLayout;
     title?: string;
     subtitle?: string;
     showSettings?: boolean;
@@ -38,6 +40,7 @@ const props = withDefaults(
     composerCapabilities: () => ({}),
     composerToolbarPlacement: "below",
     composerVoiceToolMode: "auto",
+    shellLayout: "viewport",
   },
 );
 const emit = defineEmits<{ hostRefresh: [] }>();
@@ -78,7 +81,7 @@ onMounted(() => store.loadConversation(props.conversationId));
 </script>
 
 <template>
-  <main class="assistant-shell">
+  <main class="assistant-shell" :data-layout="shellLayout">
     <header class="assistant-toolbar">
       <div class="assistant-title">
         <span class="assistant-mark">F</span>

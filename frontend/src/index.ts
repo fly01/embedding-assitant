@@ -7,6 +7,7 @@ export {
 } from "./composer";
 export { DemoDictationAdapter, type DictationAdapter } from "./dictation";
 export { DEFAULT_ASSISTANT_LABELS, type AssistantLabels } from "./labels";
+export type { AssistantShellLayout } from "./shell";
 export { createAssistantStore, type AssistantStore } from "./store";
 export * from "./types";
 

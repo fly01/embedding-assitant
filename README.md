@@ -41,6 +41,7 @@ The framework manages assistant behavior. The host application keeps control of 
 - **Progressive Host integration:** applications can start with direct embed, move to a declarative or generated Host Integration Manifest, and write a custom Domain Plugin only when configuration cannot express the required behavior safely.
 - **Chat-native chronology:** sequence-stable Messages use localized time dividers only at the first visible Message, a date boundary, or a configurable inactivity gap that defaults to five minutes.
 - **Two voice modes:** persisted playable `voice_message` input uses backend batch transcription, while `live_dictation` uses on-device or disclosed server streaming ASR to fill an editable draft.
+- **One Attachment System:** draft selection, private upload, parsing, Message rendering, Lightbox preview, retry, provenance, Privacy cleanup, and explicit Host Promotion share one contract.
 - **Unified Privacy Center:** users can inventory, export, and delete registered assistant data from one place, with explicit retention limits and derived-data cleanup.
 - **Controlled plugins:** plugins are installed during a release and may be enabled or disabled at runtime; arbitrary remote code installation is out of scope for the MVP.
 
@@ -119,6 +120,14 @@ Every level retains the Host Adapter authority boundary. Generated write mapping
 - `live_dictation` streams partial transcription into the Composer, remains editable, never auto-sends, and does not create or retain an audio Message.
 - ASR adapters may be batch or streaming and device-side or server-side. A fallback that moves audio off device must be disclosed before upload.
 
+### Attachment system
+
+- One `AttachmentTray` lives inside the Composer above text. Repeated selection appends by default, preserves order, allows reorder/removal, and enforces a visible configurable limit that defaults to eight.
+- Validation, optimization, upload, processing, and model readiness are separate per-item states. Required processing failure pauses for retry, remove-and-continue, or cancel; optional failure continues only with a warning.
+- Sent text and attachments remain one Message with one time/delivery/retry/privacy group. Images use a consistent grid and authorized `AttachmentLightbox`; files use cards with name, type, size, processing state, and one explicit preview/download/retry/unavailable action.
+- History uses stable private Attachment IDs and thumbnail/preview/original variants, never persisted `blob:` URLs, data URLs, or array indexes.
+- A chat attachment becomes a Host receipt, record photo, gallery item, or other business resource only through a confirmed Action showing source and promoted Attachment references.
+
 ### Privacy Center
 
 Privacy Center is part of the mandatory Safety & Governance baseline. It covers Conversations and Messages, attachments, voice-message audio, transcript revisions, Memory, retained raw traces, context artifacts, Pending Actions, and declared integration/plugin data.
@@ -135,7 +144,7 @@ A host can adopt Framed Assistant incrementally:
 
 1. Embed the default text assistant.
 2. Implement or configure the Host Adapter, choose an integration level, and enable deterministic Essentials tools.
-3. Add image, file, persisted voice-message, and editable live-dictation input.
+3. Enable the unified Attachment System for multi-image/file input, private processing, gallery preview, persisted voice-message, and editable live dictation.
 4. Select a context profile, then add configurable reasoning disclosure, tool activity, and Context Management as needed.
 5. Add retrieval, citations, and explicit Memory where appropriate.
 6. Add confirmed business Actions through a Manifest, generated integration, or optional custom Domain Plugin.
@@ -150,6 +159,7 @@ No stage requires the host to surrender authorization or transaction control.
 - Committed actions require idempotency keys and audit records.
 - Provider credentials remain server-side.
 - Private attachments use host-authorized access.
+- Attachment limits and processing capabilities are disclosed before send; selected items are never silently truncated or dropped, and promotion into Host business resources requires confirmed source references.
 - Logs and replay fixtures exclude secrets, raw private attachments, and unredacted model context.
 - Raw provider reasoning traces are disabled by default and require explicit Host policy, viewer authorization, and a separate retention decision.
 - Voice-message audio is private persisted user content under Host retention policy; live-dictation audio is ephemeral by default and cannot move from device to server through a silent fallback.

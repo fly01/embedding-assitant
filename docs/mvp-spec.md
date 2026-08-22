@@ -41,6 +41,7 @@ The MVP MUST:
 9. Support configurable single- or multi-conversation topology and configurable context profiles without creating separate runtimes.
 10. Allow a standard CRUD-style application to integrate without hand-writing a Domain Plugin.
 11. Provide one Privacy Center for inventory, export, deletion, retention visibility, and derived-data invalidation across all assistant-managed data.
+12. Provide one Attachment System for draft composition, private storage, processing, message rendering, preview, retry, provenance, and explicit promotion into Host business resources.
 
 ## Non-goals
 
@@ -90,6 +91,11 @@ The MVP does not include:
 | Message time divider | Derived UI label inserted before a message group when the first visible message, local-date boundary, or configured inactivity threshold requires a new time anchor. |
 | Privacy Resource | Registered assistant-managed data category with owner, scope, retention, export, deletion, and derived-artifact metadata. |
 | Privacy Job | Idempotent, resumable export or deletion workflow with preview, confirmation, progress, partial-result, and completion state. |
+| Attachment Asset | Stable private image, file, or audio resource with variants, ownership, permissions, retention, and independent upload/processing state. |
+| Draft Attachment | Composer-local ordered reference to a selected Attachment Asset or pending local file, including validation, optimization, upload, retry, and removal state. |
+| Message Attachment Part | Immutable ordered Message content part that references a stable Attachment Asset and declares whether it is required, optional, or display-only model input. |
+| Attachment Processing Result | Versioned derived OCR, extraction, vision, transcription, or structured parsing output with provenance and warnings. |
+| Attachment Promotion | Explicit confirmed operation that copies or links a chat Attachment Asset into a Host-owned business resource. |
 
 ## Architecture
 
@@ -178,7 +184,10 @@ The Integration Generator runs only during development or build workflows. It MA
 | `Conversation` | Host-scoped conversation container | actor, host scope, protocol version |
 | `Message` | Immutable user, assistant, or tool content | conversation, role, sequence, content parts, created/visible/completed/edited timing |
 | `Run` | Execution lifecycle for one user turn | input message, event sequence, status, usage |
-| `Attachment` | Controlled image, audio, or file metadata | owner, media type, processing state, private locator |
+| `AttachmentAsset` | Controlled image, audio, or file resource | owner, kind, MIME, bytes, variants, storage, permission, retention |
+| `DraftAttachment` | Composer-local pending attachment | local/stable ID, order, validation, optimization, upload, retry/removal |
+| `MessageAttachmentPart` | Immutable attachment content in one Message | attachment ID, part order, required/optional/display-only model use |
+| `AttachmentProcessingResult` | Derived parser/model output | attachment, processor/version, status, provenance, warnings |
 | `ToolInvocation` | Typed tool request and result | run, tool version, permission decision, audit reference |
 | `PendingAction` | Uncommitted host-side change proposal | schema version, payload, state, idempotency key |
 | `ContextSegment` | Internal compaction and retrieval unit | complete turn groups, source range, closure reason |
@@ -228,6 +237,9 @@ interface AssistantEvent<TPayload = unknown> {
     | "transcription.failed"
     | "privacy.job.updated"
     | "attachment.updated"
+    | "attachment.upload.updated"
+    | "attachment.processing.updated"
+    | "attachment.promotion.updated"
     | "tool.requested"
     | "tool.started"
     | "tool.completed"
@@ -312,6 +324,11 @@ The protocol is transport-neutral. The reference server exposes:
 - `GET /v1/assistant/runs/{run_id}/events?after_seq=<seq>`
 - `POST /v1/assistant/runs/{run_id}/cancel`
 - `POST /v1/assistant/attachments`
+- `GET /v1/assistant/attachments/{attachment_id}`
+- `GET /v1/assistant/attachments/{attachment_id}/thumbnail`
+- `GET /v1/assistant/attachments/{attachment_id}/preview`
+- `GET /v1/assistant/attachments/{attachment_id}/original`
+- `POST /v1/assistant/attachments/{attachment_id}/retry-processing`
 - `PATCH /v1/assistant/actions/{action_id}`
 - `POST /v1/assistant/actions/{action_id}/confirm`
 - `POST /v1/assistant/actions/{action_id}/cancel`
@@ -445,7 +462,7 @@ Custom Domain Plugins are optional and are installed at release time through the
 
 **Purpose:** provide reusable frontend behavior without imposing a visual design.
 
-**Responsibilities:** conversation state, event replay, sequence-based ordering, derived time dividers, pagination, drafts, attachment and voice-mode state, disclosure level, thinking status, reasoning summaries, provider trace state, tool activity, citations, action state, cancellation, retry, and reconnection.
+**Responsibilities:** conversation state, event replay, sequence-based ordering, derived time dividers, pagination, drafts, ordered Draft Attachments, per-attachment validation/optimization/upload/processing state, gallery focus, attachment retry/removal, voice-mode state, disclosure level, thinking status, reasoning summaries, provider trace state, tool activity, citations, Action state, cancellation, retry, and reconnection.
 
 **Acceptance:** the package renders no UI; all state is serializable; reducers handle duplicate events and interrupted streams; an application can replace every visible component while preserving behavior.
 
@@ -453,15 +470,88 @@ Custom Domain Plugins are optional and are installed at release time through the
 
 **Purpose:** provide an opinionated interface that is ready to ship and remains themeable.
 
-Required components include `AssistantShell`, `ConversationThread`, `MessageTimeDivider`, `UserMessage`, `AssistantMessage`, `StreamingMarkdown`, `ThinkingDisclosure`, `ToolActivity`, `Composer`, `VoiceMessageBubble`, `LiveDictationControl`, `TranscriptionStatus`, `ActionCard`, `CitationList`, `AttachmentPreview`, `PrivacyCenter`, `PrivacyJobStatus`, `ErrorBanner`, `StopButton`, `RegenerateButton`, and plugin renderer slots.
+Required components include `AssistantShell`, `ConversationThread`, `MessageTimeDivider`, `UserMessage`, `AssistantMessage`, `StreamingMarkdown`, `ThinkingDisclosure`, `ToolActivity`, `Composer`, `AttachmentTray`, `AttachmentGrid`, `AttachmentFileCard`, `AttachmentProcessingStatus`, `AttachmentLightbox`, `VoiceMessageBubble`, `LiveDictationControl`, `TranscriptionStatus`, `ActionCard`, `CitationList`, `PrivacyCenter`, `PrivacyJobStatus`, `ErrorBanner`, `StopButton`, `RegenerateButton`, and plugin renderer slots.
 
-**Acceptance:** panel, drawer, inline, and full-page modes work at mobile and desktop widths; keyboard and screen-reader paths cover every operation; the five-minute default time-grouping rule survives pagination without moving the reading anchor; both voice modes expose distinct states and privacy expectations; Privacy Center inventory, preview, export, deletion, partial failure, and retention-limit states are accessible; internal tool identifiers remain hidden below developer level; all six disclosure levels render distinctly; `raw_trace` shows the full provider-supplied trace when available and an explicit unavailable state otherwise.
+**Acceptance:** panel, drawer, inline, and full-page modes work at mobile and desktop widths; keyboard and screen-reader paths cover every operation; the five-minute default time-grouping rule survives pagination without moving the reading anchor; Attachment Tray location, multi-selection, stable order, per-item retry, message grouping, gallery navigation, and unavailable-source states remain consistent across surfaces; both voice modes expose distinct states and privacy expectations; Privacy Center inventory, preview, export, deletion, partial failure, and retention-limit states are accessible; internal tool identifiers remain hidden below developer level; all six disclosure levels render distinctly; `raw_trace` shows the full provider-supplied trace when available and an explicit unavailable state otherwise.
 
 ### M7. Multimodal Input Pack
 
 **Purpose:** standardize image, voice, and file input across hosts.
 
-**Responsibilities:** image selection, camera hints, drag and drop, previews, ordering, compression, upload progress, retry, voice permission, waveform, timer, cancel, batch and streaming transcription, editable dictation drafts, playable voice-message audio, transcript status, file validation, and attachment lifecycle. OCR, vision, batch ASR, streaming ASR, and on-device ASR are adapter interfaces rather than fixed providers.
+**Responsibilities:** Attachment Asset creation, image/file selection, camera, paste and drag/drop, Draft Attachment Tray, append/replace policy, ordering, validation, optimization, private upload, processing, retry, message rendering, gallery preview, provenance, explicit Host promotion, voice permission, waveform, timer, cancel, batch and streaming transcription, editable dictation drafts, playable voice-message audio, transcript status, and attachment lifecycle. OCR, vision, document extraction, structured parsing, batch ASR, streaming ASR, and on-device ASR are adapter interfaces rather than fixed providers.
+
+Minimum Attachment Asset state is:
+
+```ts
+interface AttachmentAsset {
+  id: string;
+  owner_scope: string;
+  kind: "image" | "document" | "spreadsheet" | "text" | "audio" | "archive" | "unknown";
+  name: string;
+  mime_type: string;
+  size_bytes: number;
+  source: "picker" | "camera" | "paste" | "drag_drop" | "voice";
+  original_ref: string;
+  preview_ref?: string;
+  thumbnail_ref?: string;
+  upload_status: "local" | "uploading" | "uploaded" | "failed";
+  processing_status: "none" | "queued" | "processing" | "ready" | "partial" | "failed" | "unsupported" | "blocked";
+  retention_policy: string;
+  permission_scope: string;
+  host_resource_refs?: string[];
+}
+```
+
+Default attachment configuration is:
+
+```yaml
+attachments:
+  tray_position: inside_composer_above_text
+  selection_mode: append
+  max_count: 8
+  max_total_bytes: 52428800
+  allow_reorder: true
+
+  send_gate:
+    validation_required: true
+    optimization_required: true
+    upload_required: true
+
+  run_gate:
+    required_attachment_failure: ask_user
+    optional_attachment_failure: continue_with_warning
+
+  image_grid:
+    max_visible: 8
+    viewer_scope: message
+
+  privacy:
+    storage: private
+    public_urls: forbidden
+```
+
+Hosts and processor capabilities define accepted MIME types and per-file limits. Reopening the picker appends by default. Limits, selection mode, and reorder support are configurable, but the UI MUST disclose non-default behavior before it replaces, rejects, or truncates a selection. Backend processing MUST NOT silently ignore attachments beyond its own lower limit.
+
+Draft lifecycle is:
+
+```text
+selected -> validating -> optimizing -> ready_to_upload -> uploading -> uploaded
+uploaded -> processing -> ready | partial | failed | unsupported | blocked
+```
+
+Validation, optimization, upload, processing, and model availability are independent states. The Composer Tray remains inside the Composer above the text field, hides when empty, preserves stable selection order, exposes per-item progress/error/retry/removal, and shares the same state with an expanded Composer.
+
+Every sent attachment belongs to one parent Message and shares that Message's ordering, time group, delivery state, retry surface, and privacy scope. Text and attachments MAY use separate visual blocks but MUST NOT become unrelated timeline Messages. User messages default to ordered attachments above text; assistant-generated artifacts default below explanatory text, with explicit `ContentPart.order` remaining authoritative.
+
+Images use thumbnails in the Message list and open a unified `AttachmentLightbox`. One image uses a large constrained thumbnail; two use two columns; three or four use a 2x2 grid; five to eight use a compact three-column grid with a `+N` overflow tile when needed. Every visible image is actionable when authorized. Unavailable original, expired permission, deleted source, or preview failure produces a labelled tombstone or retry state rather than a dead tap. The Lightbox opens at the selected image, navigates the Message image group, supports zoom, keyboard and touch navigation, restores focus on close, and loads Preview or Original only on demand. Download/share/original access follows Host permission.
+
+Non-image files use a consistent card showing name, kind, size, page/count metadata where available, upload status, processing status, warnings, and the permitted action: preview, download, retry, or an explicit unsupported/unavailable reason. Parser capability is distinct from file kind and declares `direct_model_input`, `ocr`, `text_extract`, `structured_parse`, `transcription`, or `unsupported`.
+
+A sent Message may appear before processing completes, but its assistant Run waits for every `model_use: required` Attachment Processing Result. Required failure pauses the Run and offers retry, remove-and-continue, or cancel. Optional failure continues only with a visible warning. The system MUST NOT fabricate extracted content, hide a failed item, or rerun successful upload/processing work when only the model Run failed.
+
+OCR, captions, extracted text, structured tables, embeddings, summaries, thumbnails, and previews are versioned derived artifacts with source Attachment IDs and processor provenance. Historical playback uses stable Attachment IDs and authorized Thumbnail/Preview/Original endpoints; persisted history and caches MUST NOT depend on `blob:` URLs, data URLs, or array indexes.
+
+Chat Attachments are not Host business media by default. A domain Action that saves an attachment as a receipt, record photo, gallery item, or other Host resource MUST show source Attachment references, selected promotion targets, and excluded evidence before confirmation. Confirmation creates an explicit `host_resource_ref` by copy or link according to Host policy. Action fields derived from attachments identify source file, page/region, processor/version, and uncertainty. Privacy Center shows chat and promoted resources separately and previews cross-resource deletion impact.
 
 Voice input configuration is:
 
@@ -478,7 +568,7 @@ voice_input:
 
 An ASR adapter declares `batch`, `streaming`, or both; execution location `device` or `server`; accepted formats; languages; partial-result support; and retention behavior. If both modes are enabled, the Host provides an explicit mode switch or distinct gestures and persists the user preference only when permitted.
 
-**Acceptance:** image/file upload failure preserves the text draft; voice-message upload and transcription have independent retry states; voice messages remain playable when transcription fails; the assistant consumes only a completed or user-corrected transcript; live dictation preserves partial text on recoverable failure; neither mode silently changes execution location; frontend and backend enforce the same audio type, duration, size, and privacy policy.
+**Acceptance:** selecting multiple attachments uses one Tray above the text field, appends by default, preserves/reorders stable order, enforces the visible limit before send, and supports per-item removal/retry; image/file upload failure preserves the text draft and Draft Attachments; sent text plus attachments remain one Message; every authorized image opens the Lightbox and every unavailable source explains why; upload, processing, and Run failures remain distinguishable; required processing failure pauses for user choice; historical replay uses stable private Attachment IDs; Attachment Promotion requires a confirmed Action with visible source references. Voice-message upload and transcription have independent retry states; voice messages remain playable when transcription fails; the assistant consumes only a completed or user-corrected transcript; live dictation preserves partial text on recoverable failure; neither mode silently changes execution location; frontend and backend enforce the same audio type, duration, size, and privacy policy.
 
 ### M8. Context Management Pack
 
@@ -528,9 +618,9 @@ blocked_plugin_disabled -> awaiting_confirmation  (compatible re-enable + revali
 blocked_plugin_disabled -> cancelled | archived   (manual resolution)
 ```
 
-**Responsibilities:** typed proposals, schema-driven editing, confirmation, cancellation, plugin-disable blocking, conflict handling, idempotent application, partial results, retry, archival, and optional undo.
+**Responsibilities:** typed proposals, schema-driven editing, Attachment source provenance and Promotion preview, confirmation, cancellation, plugin-disable blocking, conflict handling, idempotent application, partial results, retry, archival, and optional undo.
 
-**Acceptance:** the model can propose but cannot apply; confirmation rechecks authorization and validation; duplicate confirmation cannot duplicate a business write; undo is available only when the Host Adapter declares a compensating operation. Disabling a contributing plugin moves every not-yet-applying Pending Action to `blocked_plugin_disabled` without cancelling or executing it. Compatible re-enable requires revalidation before returning to `awaiting_confirmation`; permanent removal allows manual cancellation or archival. Applied history remains readable, and an Action already in `applying` records its eventual Host result rather than being silently interrupted.
+**Acceptance:** the model can propose but cannot apply; confirmation rechecks authorization and validation; duplicate confirmation cannot duplicate a business write; undo is available only when the Host Adapter declares a compensating operation. An Action derived from attachments preserves stable `source_attachment_refs`, page/region or processor provenance where applicable, and separately lists any `promoted_attachment_refs` before confirmation. Disabling a contributing plugin moves every not-yet-applying Pending Action to `blocked_plugin_disabled` without cancelling or executing it. Compatible re-enable requires revalidation before returning to `awaiting_confirmation`; permanent removal allows manual cancellation or archival. Applied history remains readable, and an Action already in `applying` records its eventual Host result rather than being silently interrupted.
 
 ### M12. Safety & Governance
 
@@ -563,7 +653,7 @@ The repository SHOULD include domain-neutral examples for wellness logging, itin
 | Package | Default state | MVP contents |
 | --- | --- | --- |
 | Essentials | enabled | date/time, calculator, unit conversion, formatting, text cleanup, bounded page context |
-| Multimodal Input | disabled | image and file lifecycle plus persisted `voice_message` batch transcription and editable `live_dictation` streaming transcription |
+| Multimodal Input | disabled | unified Attachment Tray/Asset/lifecycle, private upload and processing, Message renderers, Lightbox, explicit Host Promotion, persisted `voice_message` batch transcription, and editable `live_dictation` streaming transcription |
 | Context Management | disabled | `balanced` and `durable` profiles, segmentation, ledger, summaries, retrieval, invalidation, rebuild, and Context Manifest; core always provides `lite` |
 | Knowledge & Retrieval | disabled | web, URL, document, host knowledge, citations |
 | Memory | disabled | explicit scoped Memory with user controls |
@@ -668,11 +758,14 @@ The Host sets the maximum permitted level; an authorized viewer MAY select any l
 Minimum behavior:
 
 - preserve user drafts across recoverable failures;
+- keep one `AttachmentTray` inside the Composer above the text field, append repeated selections by default, show the configured limit before selection/send, preserve stable order, and expose per-item progress, retry, removal, and reorder controls;
 - distinguish history loading, sending, streaming, tool execution, upload, transcription, and action application;
 - auto-follow streaming only while the user remains at the bottom;
 - preserve the reading anchor when older history is prepended;
 - derive localized time dividers with a five-minute default inactivity threshold, recomputing them after pagination without changing Message order;
 - keep `voice_message` playback/transcription states separate from `live_dictation` recording, partial-text, and editable-draft states;
+- render sent attachments inside their parent Message with one delivery/time/retry/privacy group; use `AttachmentGrid`, file cards, and an authorized Lightbox consistently; dead taps and silent attachment failure are non-conformant;
+- show attachment-derived Action provenance and Promotion targets before confirmation;
 - honor the configured disclosure level without inventing unavailable reasoning data;
 - show user-facing tool outcomes rather than internal function names;
 - make proposed actions editable before confirmation;
@@ -749,6 +842,9 @@ Privacy Jobs are scoped to the authenticated actor and Host scope, require destr
 - Sensitive fields MUST be redacted from logs and developer fixtures.
 - Provider credentials MUST remain server-side.
 - Attachment access MUST be private and host-authorized.
+- Attachment limits and processor capabilities MUST be disclosed before selection or send; no layer may silently truncate, drop, or reinterpret selected files.
+- Persisted Messages use stable Attachment IDs and private authorized variants; public asset URLs, `blob:` URLs, data URLs, and array indexes are not durable history references.
+- Attachment-derived facts and Action fields retain processor/version plus source Attachment/page/region provenance. Promotion into a Host business resource requires explicit Action confirmation.
 - Action confirmation MUST revalidate authorization and payload integrity.
 - Every committed Action MUST have an idempotency key and audit record.
 - Partial failure MUST identify successful, failed, and retryable items.
@@ -804,7 +900,7 @@ Parallel work rules:
 - UI component, accessibility, responsive, and recovery tests;
 - message chronology tests for sequence ordering, five-minute grouping, cross-date labels, timezone formatting, pagination recomputation, and in-place Action updates;
 - disclosure tests for all six levels, provider capability mismatch, authorization denial, and raw-trace persistence defaults;
-- image, file, voice-message, live-dictation, ASR capability, transcript revision, privacy, fallback-disclosure, and attachment lifecycle tests;
+- Attachment Asset/Draft/Message-Part schemas, stable ID/private variant URLs, Tray placement, append/limit/reorder, per-item validation/optimization/upload/processing states, image grid/Lightbox, file-card capability, required/optional Run gates, history replay, Action provenance/Promotion, privacy invalidation, image, file, voice-message, live-dictation, ASR capability, transcript revision, and fallback-disclosure tests;
 - context segmentation, summary trigger, correction/supersession, compaction race, invalidation, permission filtering, provenance, Manifest, and rebuild tests;
 - retrieval citations and external-data permission tests;
 - Memory scope and deletion tests;
@@ -818,7 +914,10 @@ Parallel work rules:
 | --- | --- | --- |
 | Text conversation | M0, M1, M5, M6 | persisted input, streamed output, completed run |
 | Read-only tool | M0, M1, M3, M6, M12 | visible lifecycle, authorized execution, validated output |
-| Image upload failure | M5, M6, M7 | draft retained, retry available, clear error |
+| Multi-attachment composition | M0, M5, M6, M7 | three images and one file append in one Tray above text, preserve order, support removal/reorder, and send as one Message |
+| Attachment processing failure | M1, M5, M6, M7, M12 | draft/upload is not lost, upload/parse/Run failures remain distinct, required failure pauses for retry/remove-and-continue/cancel |
+| Attachment history and gallery | M0, M5, M6, M7, M12 | stable private IDs survive pagination, thumbnails open the authorized Message gallery, unavailable sources show labelled tombstones |
+| Attachment-derived Action | M0, M7, M11, M12 | source file/page/region provenance and Promotion targets are visible before confirmation; Host resource is created only after confirmation |
 | Voice message | M0, M1, M5, M6, M7, M12 | private playable audio persists, batch transcript completes before assistant consumption, failure remains retryable |
 | Live dictation | M5, M6, M7, M12 | on-device or disclosed server streaming fills an editable draft, never auto-sends, and retains no audio Message |
 | Message time grouping | M0, M5, M6 | sequence order remains stable, continuous messages share one time anchor, five-minute/date boundaries create localized dividers, pagination recomputes without jump |
@@ -839,7 +938,7 @@ The MVP is complete when:
 - [ ] M0 schemas are frozen at `0.1` and the conformance command passes.
 - [ ] M1-M14 satisfy their module acceptance requirements.
 - [ ] A representative host embeds the default UI through a real Host Adapter.
-- [ ] Text, image/file attachment, persisted voice-message with backend transcript, and live editable dictation flows work.
+- [ ] Text, multi-image/file Attachment Tray, private upload/processing/retry, one-Message rendering, image Lightbox, file cards, explicit Attachment Promotion, persisted voice-message with backend transcript, and live editable dictation flows work.
 - [ ] Streaming Markdown, all six disclosure levels, tool activity, citations, and Action cards render through public contracts.
 - [ ] A `Level 1` Host Integration Manifest contributes a tool and a confirmed Action without custom plugin code.
 - [ ] A `Level 2` generated Manifest reports unresolved risks and cannot activate writes before review.

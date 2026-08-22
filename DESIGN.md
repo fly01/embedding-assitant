@@ -60,10 +60,35 @@
 
 ## Components
 
-- Existing patterns to preserve as behavioral evidence: streaming Markdown, sequence-stable paginated history, grouped message-time dividers, multimodal composition, playable voice messages, editable live dictation, visible tool activity, resumable streams, attachment previews, and editable confirm/cancel action cards.
-- New/changed components: headless assistant store, assistant shell, conversation thread, `MessageTimeDivider`, message-part renderers, multimodal composer, `VoiceMessageBubble`, `LiveDictationControl`, `TranscriptionStatus`, reasoning disclosure, tool activity, citations, action workspace, `PrivacyCenter`, `PrivacyResourceList`, `DeletionImpactPreview`, `PrivacyJobStatus`, error recovery, plugin slots, host-context badges, Integration Manifest editor/review, generated-risk report, Context Profile settings, Context Manifest inspector, and developer inspectors.
-- Variants and states: inline, drawer, side panel, full-screen tab, and floating panel; signed out, disabled by Host, loading history, streaming, interrupted, offline, uploading, recording voice message, voice message transcribing, voice transcription failed, live dictation loading/listening/partial/final, permission denied, privacy inventory loading, export preparing/ready/failed, deletion preview/awaiting-confirmation/running/partial/completed/failed, unresolved processor, retention restricted, Integration Manifest draft, review blocked, plugin disabled, Action blocked by plugin, reasoning unavailable, raw trace visible, context profile preparing, context fallback active, context rebuild failed, awaiting confirmation, applying, partial failure, applied, cancelled, archived, and undo available.
+- Existing patterns to preserve as behavioral evidence: streaming Markdown, sequence-stable paginated history, grouped message-time dividers, multimodal composition, multi-image selection, private thumbnail/preview/original variants, playable voice messages, editable live dictation, visible tool activity, resumable streams, and editable confirm/cancel Action cards.
+- New/changed components: headless assistant store, assistant shell, conversation thread, `MessageTimeDivider`, message-part renderers, multimodal composer, `AttachmentTray`, `AttachmentGrid`, `AttachmentFileCard`, `AttachmentProcessingStatus`, `AttachmentLightbox`, `VoiceMessageBubble`, `LiveDictationControl`, `TranscriptionStatus`, reasoning disclosure, tool activity, citations, Action Workspace, `PrivacyCenter`, `PrivacyResourceList`, `DeletionImpactPreview`, `PrivacyJobStatus`, error recovery, plugin slots, Host-context badges, Integration Manifest editor/review, generated-risk report, Context Profile settings, Context Manifest inspector, and developer inspectors.
+- Variants and states: inline, drawer, side panel, full-screen tab, and floating panel; signed out, disabled by Host, loading history, streaming, interrupted, offline, attachment selected/validating/optimizing/uploading/uploaded/processing/ready/partial/failed/unsupported/blocked, required attachment waiting for user decision, Attachment Lightbox open/unavailable, recording voice message, voice message transcribing, voice transcription failed, live dictation loading/listening/partial/final, permission denied, privacy inventory loading, export preparing/ready/failed, deletion preview/awaiting-confirmation/running/partial/completed/failed, unresolved processor, retention restricted, Integration Manifest draft, review blocked, plugin disabled, Action blocked by plugin, reasoning unavailable, raw trace visible, context profile preparing, context fallback active, context rebuild failed, awaiting confirmation, applying, partial failure, applied, cancelled, archived, and undo available.
 - Token/component ownership: the framework owns semantic token names and slot contracts; host applications override values or renderers without forking runtime state.
+
+### Attachment System
+
+The framework distinguishes `AttachmentAsset`, `DraftAttachment`, `MessageAttachmentPart`, derived processing results, and promoted Host business resources. A chat attachment never becomes a business receipt, record photo, gallery item, or other Host resource without an explicit confirmed Action.
+
+Default Composer behavior is:
+
+```yaml
+attachments:
+  tray_position: inside_composer_above_text
+  selection_mode: append
+  max_count: 8
+  allow_reorder: true
+  required_attachment_failure: ask_user
+```
+
+- `AttachmentTray` is inside the Composer above the text field, hidden when empty, and shared with expanded input. Reopening selection appends. Every item exposes thumbnail/file identity, stable order, state, progress, retry, removal, and reorder. Replacing or truncating a selection without prior disclosure is forbidden.
+- Validation and optimization complete before send. Private upload completes before Message submission. After send, processing may continue inside the Message while the assistant Run waits for required results. Required failure offers retry, remove-and-continue, or cancel; optional failure continues only with a visible warning.
+- Text and attachments form one Message group with one time anchor, delivery state, retry surface, and privacy scope. User attachments default above user text. Assistant-generated files default below explanatory text. `ContentPart.order` remains authoritative.
+- Image layout: one large constrained thumbnail; two columns for two images; a 2x2 grid for three or four; a compact three-column grid for five to eight with `+N` overflow where needed. Message lists load thumbnails only.
+- Every authorized image opens `AttachmentLightbox` at the selected item. The default gallery scope is the parent Message. It supports previous/next, index, zoom, keyboard/touch navigation, close with focus restoration, and Host-controlled download/share/original access. Deleted, expired, unauthorized, or failed previews show a labelled tombstone or retry state rather than a dead tap.
+- Non-image files use `AttachmentFileCard` with name, kind, size, pages/count where known, upload state, processing state, warnings, and exactly one clear capability: preview, download, retry, or unavailable reason.
+- Upload, processing, and Assistant Run failures are separate. Retrying a model Run never repeats successful upload or parsing. The UI never hides a failed attachment or lets a backend silently ignore items beyond its lower limit.
+- OCR, captions, text extraction, structured parsing, embeddings, summaries, thumbnails, and previews are derived and display source Attachment plus processor/version provenance. History uses stable private Attachment IDs and refreshed authorized variants, never persisted `blob:`/data URLs or array indexes.
+- Attachment-derived Action cards show source file, page/region where relevant, processor/version, uncertain fields, and selected Promotion targets. Users can open the source before confirmation. Privacy Center displays chat sources and promoted Host resources separately and previews cross-resource deletion effects.
 
 ### Message chronology and time grouping
 
@@ -136,22 +161,22 @@ If a contributing plugin is disabled, its not-yet-applying Action card remains r
 ## Accessibility
 
 - Target standard: WCAG 2.2 AA for the default web component kit.
-- Keyboard/focus behavior: composer, voice-mode switch, record/stop, voice-message playback, transcript retry/correction, attachment controls, Privacy Center inventory/export/delete controls, stop/regenerate, reasoning disclosure, tool details, citations, and Action controls must be reachable, labelled, and visibly focused.
+- Keyboard/focus behavior: composer, Attachment Tray removal/reorder/retry, file-card actions, Lightbox navigation/zoom/close with focus restoration, voice-mode switch, record/stop, voice-message playback, transcript retry/correction, Privacy Center inventory/export/delete controls, stop/regenerate, reasoning disclosure, tool details, citations, and Action controls must be reachable, labelled, and visibly focused.
 - Contrast/readability: permission, confirmation, and error states never rely on color alone.
-- Screen-reader semantics: time dividers expose full localized time, voice messages expose duration and transcription status, live dictation announces state without reading every partial replacement, Privacy Jobs announce category progress and partial/unresolved outcomes without flooding, streaming and tool status use restrained live regions, reasoning disclosures expose their current level and expanded state, raw trace does not continuously flood a live region, and Action cards announce current state and available operations.
+- Screen-reader semantics: Attachment Tray announces count, order, kind, progress, error, and available action; image grid items announce gallery position and unavailable reason; file cards expose name/type/size/processing capability; time dividers expose full localized time; voice messages expose duration and transcription status; live dictation announces state without reading every partial replacement; Privacy Jobs announce category progress and partial/unresolved outcomes without flooding; streaming and tool status use restrained live regions; reasoning disclosures expose their current level and expanded state; raw trace does not continuously flood a live region; and Action cards announce current state and available operations.
 - Reduced motion and sensory considerations: waveform, loading, and streaming animations simplify or pause under reduced-motion preferences while recording state remains unambiguous.
 
 ## Responsive behavior
 
 - Supported breakpoints/devices: primary web targets are 360–430 px mobile widths and 320–720 px embedded/desktop panels; contracts remain platform-neutral for native clients.
-- Layout adaptations: shells respect safe areas and keyboard insets; the composer pins only when the host container permits it; tables and domain cards provide narrow-width fallbacks.
-- Touch/hover differences: touch targets remain at least 44 px; icon-only actions expose labels and desktop tooltips.
+- Layout adaptations: shells respect safe areas and keyboard insets; the composer pins only when the Host container permits it; Attachment Tray uses a bounded horizontal strip or compact wrap without covering text/actions; grids recalculate columns without horizontal page overflow; Lightbox fills the safe viewport; tables and domain cards provide narrow-width fallbacks.
+- Touch/hover differences: touch targets remain at least 44 px; attachment reorder uses accessible long-press/drag plus non-drag alternatives; Lightbox supports swipe/pinch and keyboard controls; icon-only actions expose labels and desktop tooltips.
 
 ## Interaction states
 
-- Loading: distinguish history loading, sending, model streaming, tool execution, voice-message upload/batch transcription, live-dictation model preparation/streaming transcription, file processing, Privacy inventory/export/deletion jobs, and Action application.
+- Loading: distinguish history loading, sending, model streaming, tool execution, attachment validation/optimization/upload/processing, voice-message batch transcription, live-dictation model preparation/streaming transcription, Privacy inventory/export/deletion jobs, and Action application.
 - Empty: show host-provided starter prompts and current-context hints, never fabricated conversation content.
-- Error: preserve the draft, playable voice Message, partial dictation text, and safe attachment metadata as applicable; Privacy Jobs retain item-level success/failure and unresolved-processor evidence; explain whether upload retry, transcription retry/correction, privacy retry, reconcile, edit, cancellation, archival, compatible plugin re-enable, or context-profile fallback is available.
+- Error: preserve the text draft, ordered Draft Attachments, sent Message attachments, playable voice Message, partial dictation text, and safe metadata as applicable; distinguish validation, optimization, upload, processing, preview, permission, and Assistant Run failure; Privacy Jobs retain item-level success/failure and unresolved-processor evidence; explain whether retry, remove-and-continue, cancel, transcription correction, privacy retry, reconcile, edit, archival, compatible plugin re-enable, or context-profile fallback is available.
 - Success: applied Action cards show the user-facing outcome and invoke an explicit Host refresh callback; Privacy Jobs summarize exported/deleted categories and remaining restrictions without claiming more than processors confirmed.
 - Disabled: expose the reason visually and to assistive technology.
 - Offline/slow network: retain existing messages, stop indeterminate loading, and offer bounded reconnection or retry.
@@ -159,16 +184,16 @@ If a contributing plugin is disabled, its not-yet-applying Action card remains r
 ## Content voice
 
 - Tone: concise, calm, and transparent. The first reference locale is Simplified Chinese, but all default copy MUST be replaceable through localization resources; domain terminology comes from the Host Integration Manifest or optional plugin.
-- Terminology: “助手”, “隐私中心”, “导出助手数据”, “删除助手数据”, “删除影响”, “部分完成”, “保留期限”, “语音消息”, “实时转写”, “正在录音”, “正在转写”, “转写失败”, “正在思考”, “正在查看”, “待确认”, “确认”, “修改”, “取消”, “已应用”, “恢复回复”, “引用来源”.
+- Terminology: “助手”, “附件”, “正在校验”, “正在压缩”, “正在上传”, “正在解析”, “解析失败”, “不支持预览”, “查看原图”, “保存为业务资料”, “来源附件”, “隐私中心”, “导出助手数据”, “删除助手数据”, “删除影响”, “部分完成”, “保留期限”, “语音消息”, “实时转写”, “正在录音”, “正在转写”, “转写失败”, “正在思考”, “正在查看”, “待确认”, “确认”, “修改”, “取消”, “已应用”, “恢复回复”, “引用来源”.
 - Microcopy rules: below developer level, describe user-facing activity and outcomes rather than internal function names. `raw_trace` is labelled as verbatim provider reasoning, not verified fact or framework-authored explanation. Integration review surfaces distinguish “generated candidate”, “approved mapping”, “blocked risk”, and “active capability”; a disabled-plugin Action never appears cancelled or executable.
 
 ## Implementation constraints
 
 - Framework/styling system: MVP reference client uses Vue 3, TypeScript, and a headless store; the reference backend uses Python/FastAPI. JSON Schema and the event protocol are the cross-language source of truth.
 - Design-token constraints: semantic CSS variables and typed slot props; no application-specific palette in framework packages.
-- Performance constraints: paginated or virtualized history, bounded attachment previews, stream backpressure, profile-driven token budgeting, one Context Compiler contract, Context Manifest diagnostics, and no full-resolution image decoding in message lists.
+- Performance constraints: paginated or virtualized history, bounded Attachment Tray and grid rendering, thumbnails only in Message lists, preview/original loading on demand, sequential or bounded-concurrency image decoding/optimization, stream backpressure, profile-driven token budgeting, one Context Compiler contract, and Context Manifest diagnostics.
 - Compatibility constraints: authenticated private-data Hosts, registered Privacy Resources and export/delete/invalidation handlers, generic adapters backed by approved configuration, review-gated generated integrations, resumable event streams, Host-controlled media URLs, batch/streaming and device/server ASR adapters, explicit fallback disclosure, mobile Safari attachment behavior, and optional custom plugins installed at release time but enabled or disabled at runtime.
-- Test/screenshot expectations: contract fixtures, reducer tests, Privacy inventory/export/deletion/partial/retention states and derivative invalidation, five-minute message-time grouping and pagination recomputation, both voice modes and ASR execution locations, audio retention/privacy, transcription failure/correction, all four Host integration levels, generated-risk review, `blocked_plugin_disabled` Actions, generic historical renderer fallback, single/multiple Conversation modes, `lite`/`balanced`/`durable` context profiles, profile preparation/fallback/failure states, all six reasoning disclosure levels, trace-unavailable and authorization states, component interaction and accessibility tests, mobile/desktop visual smoke checks, disconnect recovery, permission denial, and Action idempotency.
+- Test/screenshot expectations: contract fixtures, reducer tests, Attachment Tray placement/append/limit/reorder, per-item state and retry, one-Message grouping, grid/file card/Lightbox/unavailable tombstones, history replay, required/optional processing gates, Action provenance/Promotion, Privacy invalidation, five-minute message-time grouping and pagination recomputation, both voice modes and ASR execution locations, audio retention/privacy, transcription failure/correction, all four Host integration levels, generated-risk review, `blocked_plugin_disabled` Actions, generic historical renderer fallback, single/multiple Conversation modes, `lite`/`balanced`/`durable` context profiles, profile preparation/fallback/failure states, all six reasoning disclosure levels, trace-unavailable and authorization states, component interaction and accessibility tests, mobile/desktop visual smoke checks, disconnect recovery, permission denial, and Action idempotency.
 
 ## Open questions
 

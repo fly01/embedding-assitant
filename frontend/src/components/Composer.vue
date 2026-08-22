@@ -109,7 +109,7 @@ function beginDictation(): void {
         :aria-label="labels.takePhoto"
         @click="cameraInput?.click()"
       >
-        Camera
+        {{ labels.takePhoto }}
       </button>
       <input
         ref="cameraInput"

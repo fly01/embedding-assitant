@@ -137,6 +137,8 @@ export function createAssistantStore(api: AssistantApi) {
       state.rawTrace = "Provider trace is unavailable.";
     if (event.type === "run.failed")
       state.error = String(event.payload.message ?? "Assistant Run failed");
+    if (["run.completed", "run.failed", "run.interrupted"].includes(event.type))
+      state.thinking = "";
     if (event.type === "tool.requested")
       upsertTool(event.payload.name, "requested");
     if (event.type === "tool.started")

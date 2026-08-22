@@ -545,7 +545,7 @@ Custom Domain Plugins are optional and are installed at release time through the
 
 **Responsibilities:** conversation state, event replay, sequence-based ordering, derived time dividers, pagination, drafts, ordered Draft Attachments, per-attachment validation/optimization/upload/processing state, gallery focus, attachment retry/removal, voice-mode state, disclosure level, thinking status, reasoning summaries, provider trace state, tool activity, citations, Action state, cancellation, retry, and reconnection.
 
-**Acceptance:** the package renders no UI; all state is serializable; reducers handle duplicate events, interrupted streams, and terminal `run.failed` errors; framework error envelopes and standard Host HTTP `detail` errors produce non-empty client errors; an application can replace every visible component while preserving behavior.
+**Acceptance:** the package renders no UI; all state is serializable; reducers handle duplicate events, interrupted streams, and terminal `run.failed` errors; terminal Run events clear transient thinking status rather than leaving an active-stage indicator behind; framework error envelopes and standard Host HTTP `detail` errors produce non-empty client errors; an application can replace every visible component while preserving behavior.
 
 ### M6. Default Frontend UI Components
 

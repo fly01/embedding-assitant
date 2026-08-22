@@ -5,6 +5,7 @@ import {
   DEFAULT_COMPOSER_CAPABILITIES,
   type ComposerCapabilities,
   type ComposerToolbarPlacement,
+  type ComposerVoiceToolMode,
 } from "../composer";
 import type { DictationAdapter } from "../dictation";
 import { DEFAULT_ASSISTANT_LABELS, type AssistantLabels } from "../labels";
@@ -21,6 +22,7 @@ const props = withDefaults(
     dictationAdapter?: DictationAdapter;
     composerCapabilities?: Partial<ComposerCapabilities>;
     composerToolbarPlacement?: ComposerToolbarPlacement;
+    composerVoiceToolMode?: ComposerVoiceToolMode;
     title?: string;
     subtitle?: string;
     showSettings?: boolean;
@@ -35,6 +37,7 @@ const props = withDefaults(
     labels: () => ({}),
     composerCapabilities: () => ({}),
     composerToolbarPlacement: "below",
+    composerVoiceToolMode: "auto",
   },
 );
 const emit = defineEmits<{ hostRefresh: [] }>();
@@ -177,6 +180,7 @@ onMounted(() => store.loadConversation(props.conversationId));
       :dictation-adapter="dictationAdapter"
       :capabilities="resolvedComposerCapabilities"
       :toolbar-placement="composerToolbarPlacement"
+      :voice-tool-mode="composerVoiceToolMode"
       :labels="uiLabels"
     />
   </main>

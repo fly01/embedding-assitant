@@ -1,4 +1,5 @@
 export type ComposerToolbarPlacement = "below" | "side";
+export type ComposerVoiceToolMode = "auto" | "voice_message" | "live_dictation";
 
 export interface ComposerCapabilities {
   attachments: boolean;

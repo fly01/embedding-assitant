@@ -4,7 +4,10 @@ import { AssistantApi } from "./api";
 import AssistantShell from "./components/AssistantShell.vue";
 import MemoryPanel from "./components/MemoryPanel.vue";
 import PrivacyCenter from "./components/PrivacyCenter.vue";
-import type { ComposerToolbarPlacement } from "./composer";
+import type {
+  ComposerToolbarPlacement,
+  ComposerVoiceToolMode,
+} from "./composer";
 import { DemoDictationAdapter } from "./dictation";
 import type { Conversation, HostRecord } from "./types";
 
@@ -20,6 +23,7 @@ const hostRecords = ref<HostRecord[]>([]);
 const privacyOpen = ref(false);
 const memoryOpen = ref(false);
 const composerToolbarPlacement = ref<ComposerToolbarPlacement>("below");
+const composerVoiceToolMode = ref<ComposerVoiceToolMode>("live_dictation");
 
 async function loadConversations(): Promise<void> {
   conversations.value = await api.listConversations();
@@ -70,6 +74,13 @@ onMounted(async () => {
           <option value="below">Toolbar below</option>
           <option value="side">Toolbar side</option>
         </select>
+        <select
+          v-model="composerVoiceToolMode"
+          aria-label="Composer voice tool mode"
+        >
+          <option value="live_dictation">Voice uses live dictation</option>
+          <option value="voice_message">Voice uses audio message</option>
+        </select>
         <button @click="memoryOpen = true">Memory</button>
         <button @click="privacyOpen = true">Privacy</button>
       </nav>
@@ -81,6 +92,7 @@ onMounted(async () => {
         :conversation-id="conversationId"
         :dictation-adapter="dictationAdapter"
         :composer-toolbar-placement="composerToolbarPlacement"
+        :composer-voice-tool-mode="composerVoiceToolMode"
         @host-refresh="refreshRecords"
       />
       <aside class="host-records">

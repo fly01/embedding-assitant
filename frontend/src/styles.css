@@ -398,10 +398,10 @@ p {
 }
 
 .composer {
+  position: relative;
   margin: 0 12px 12px;
   border: 1px solid var(--fa-border, #d8dde3);
   border-radius: 12px;
-  overflow: hidden;
   background: white;
 }
 .composer[data-toolbar-placement="side"] {
@@ -422,21 +422,20 @@ p {
 .composer-tools {
   display: flex;
   align-items: center;
+  justify-content: flex-end;
   gap: 4px;
-  overflow-x: auto;
   padding: 6px;
   border-top: 1px solid var(--fa-border, #d8dde3);
 }
 .composer-tool {
-  flex: 0 0 40px;
-  width: 40px;
-  min-width: 40px;
-  min-height: 40px;
+  flex: 0 0 42px;
+  width: 42px;
+  min-width: 42px;
+  min-height: 42px;
   padding: 0;
-  border-color: transparent;
-  background: transparent;
-  font-size: 19px;
-  font-weight: 700;
+  border: 0;
+  border-radius: 999px;
+  background: var(--fa-muted-surface, #f4f6f8);
 }
 .composer-tool.active {
   border-color: color-mix(in srgb, var(--fa-accent, #315f80) 35%, transparent);
@@ -444,19 +443,40 @@ p {
   color: var(--fa-accent, #315f80);
 }
 .send-button {
-  margin-left: auto;
   border-color: var(--fa-accent, #315f80);
   background: var(--fa-accent, #315f80);
   color: white;
 }
-.composer-mode-panel {
+.hold-to-talk.active {
+  color: white;
+  background: var(--fa-accent, #315f80);
+  box-shadow: 0 0 0 4px
+    color-mix(in srgb, var(--fa-accent, #315f80) 18%, transparent);
+}
+.attachment-menu {
+  position: absolute;
+  z-index: 8;
+  bottom: 54px;
+  left: 6px;
+  display: flex;
+  min-width: 190px;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px;
+  border: 1px solid var(--fa-border, #d8dde3);
+  border-radius: 12px;
+  background: var(--fa-surface, #fff);
+  box-shadow: 0 14px 36px rgba(20, 30, 38, 0.18);
+}
+.attachment-menu button {
   display: flex;
   align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-  padding: 6px 8px;
-  border-top: 1px solid var(--fa-border, #d8dde3);
-  background: var(--fa-muted-surface, #f4f6f8);
+  justify-content: flex-start;
+  gap: 9px;
+  min-height: 40px;
+  border: 0;
+  padding: 0 10px;
+  background: transparent;
 }
 .composer[data-toolbar-placement="side"] .attachment-tray {
   grid-column: 1 / -1;
@@ -465,21 +485,19 @@ p {
   grid-column: 1;
   grid-row: 2;
 }
-.composer[data-toolbar-placement="side"] .composer-mode-panel {
-  grid-column: 1;
-  grid-row: 3;
-}
 .composer[data-toolbar-placement="side"] .composer-tools {
   grid-column: 2;
-  grid-row: 2 / span 2;
+  grid-row: 2;
   flex-direction: column;
+  justify-content: flex-end;
   overflow: visible;
   border-top: 0;
   border-left: 1px solid var(--fa-border, #d8dde3);
 }
-.composer[data-toolbar-placement="side"] .send-button {
-  margin-top: auto;
-  margin-left: 0;
+.composer[data-toolbar-placement="side"] .attachment-menu {
+  right: 58px;
+  bottom: 6px;
+  left: auto;
 }
 .recording {
   color: var(--fa-danger, #a83d3d);

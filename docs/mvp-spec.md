@@ -10,9 +10,12 @@
 
 ## Revision history
 
-- 2026-08-22 — `COMPOSER-TOOLBAR-01`: replaced the input-mode select with one configurable `below` or `side` Composer toolbar containing text, attachment, camera, voice-message, available live-dictation, and send controls.
+- 2026-08-22 — `COMPOSER-TOOLBAR-01`: replaced the input-mode select with one configurable `below` or `side` Composer toolbar. Its initial separate text/attachment/camera/voice controls were superseded by `COMPOSER-DIRECT-ACTIONS-02`.
 - 2026-08-22 — `LIVE-DICTATION-GATE-01`: made live dictation capability-gated; the default UI MUST NOT render it without an available Host-provided embedded-model or API `DictationAdapter`.
 - 2026-08-22 — `DRAFT-ATTACHMENT-02`: made Draft Attachments compact and previewable with image thumbnails, bounded file cards, on-demand authorized preview, and small reorder/remove/retry controls.
+- 2026-08-22 — `COMPOSER-DIRECT-ACTIONS-02`: aligned the default toolbar with the fit-assistant direct-action pattern: the text field itself is text input; the visible toolbar contains `+`, one microphone, and send; `+` opens image/file selection and camera actions.
+- 2026-08-22 — `VOICE-HOLD-02`: changed the default microphone interaction to press-and-hold. Pointer/key down starts capture and release stops it; an available live-dictation adapter fills editable text, otherwise the configured voice-message path records a private audio Attachment and transcript.
+- 2026-08-22 — `DEFAULT-ICONS-01`: adopted the fit-assistant Lucide icon vocabulary as the framework default: `Plus`, `Mic`, `ArrowUp`, `Image`, and `Camera`, with accessible names and Host-replaceable rendering.
 
 This document defines the public MVP contract for Framed Assistant. It describes observable behavior, stable interfaces, module boundaries, conformance requirements, and release criteria. It does not prescribe private deployment details or a domain-specific data model.
 
@@ -559,7 +562,7 @@ Custom Domain Plugins are optional and are installed at release time through the
 
 Required components include `AssistantShell`, `ConversationThread`, `MessageTimeDivider`, `UserMessage`, `AssistantMessage`, `StreamingMarkdown`, `ThinkingDisclosure`, `ToolActivity`, `Composer`, `ComposerToolbar`, `AttachmentTray`, `AttachmentGrid`, `AttachmentFileCard`, `AttachmentProcessingStatus`, `AttachmentLightbox`, `VoiceMessageBubble`, `LiveDictationControl`, `TranscriptionStatus`, `ActionCard`, `AutoAppliedResultCard`, `ExecutionModeSettings`, `HostDataToolSettings`, `CitationList`, `PrivacyCenter`, `PrivacyJobStatus`, `ErrorBanner`, `StopButton`, `RegenerateButton`, generic content renderer slots, and `action_type`-keyed Action renderer slots.
 
-**Acceptance:** panel, drawer, inline, and full-page modes work at mobile and desktop widths; the Host can set Shell title/subtitle, typed user-facing labels, and size through public props and theme variables, and can hide maintainer settings from ordinary users without changing their configured values; `ComposerToolbar` renders text, enabled attachment/camera/voice capabilities, capability-gated live dictation, and send as one button group placed below the text field or vertically beside it; English defaults remain complete when no label overrides are supplied; the published Vue package exposes one documented default stylesheet import and contains library artifacts rather than Reference Host application assets; fallback component layout selectors are scoped to their component root and MUST NOT alter Host-provided content or Action renderers; Host-driven active-Conversation changes rebind the thread without adding framework-owned navigation; keyboard and screen-reader paths cover every operation; chronology, multimodal flows, both voice modes, Privacy Center, tool visibility, six disclosure levels, and `raw_trace` availability remain consistent.
+**Acceptance:** panel, drawer, inline, and full-page modes work at mobile and desktop widths; the Host can set Shell title/subtitle, typed user-facing labels, and size through public props and theme variables, and can hide maintainer settings from ordinary users without changing their configured values; `ComposerToolbar` renders the fit-assistant default `Plus`, `Mic`, and `ArrowUp` actions as one button group placed below the text field or vertically beside it; the text field itself is the only text-mode control; `Plus` owns the attachment/camera menu; the microphone is hold-to-talk and uses capability-gated live dictation or voice-message behavior; English defaults remain complete when no label overrides are supplied; the published Vue package exposes one documented default stylesheet import and contains library artifacts rather than Reference Host application assets; fallback component layout selectors are scoped to their component root and MUST NOT alter Host-provided content or Action renderers; Host-driven active-Conversation changes rebind the thread without adding framework-owned navigation; keyboard and screen-reader paths cover every operation; chronology, multimodal flows, both voice modes, Privacy Center, tool visibility, six disclosure levels, and `raw_trace` availability remain consistent.
 
 ### M7. Multimodal Input Pack
 
@@ -572,18 +575,16 @@ Composer capability configuration is:
 ```yaml
 composer:
   toolbar_placement: below | side
-  tools:
-    attachment: true
-    camera: true
-    text: true
-    voice_message: true
-    live_dictation:
-      enabled: true
-      adapter: embedded_model | api
-    send: true
+  attachment_menu:
+    enabled: true
+    items: [image_or_file, camera]
+  voice_tool:
+    interaction: hold_to_talk
+    mode: auto | voice_message | live_dictation
+    live_dictation_adapter: embedded_model | api
 ```
 
-`below` is the default and renders one horizontal toolbar below the text field. `side` renders the same ordered controls vertically beside the text field. Text and send are baseline controls. Attachment, camera, and voice message follow declared Host capabilities. `live_dictation` is visible only when an enabled `DictationAdapter.available` declaration identifies an `embedded_model` or `api` provider; configuration without an available adapter is invalid for presentation, and the UI MUST omit the control rather than render a disabled or non-functional option. Demo adapters are development fixtures and MUST NOT activate production UI.
+`below` is the default and renders one horizontal toolbar below the text field. `side` renders the same ordered controls vertically beside the text field. The default visible actions use the framework Lucide set: `Plus`, `Mic`, and `ArrowUp`. There is no separate text button because the text field is already the text interaction. `Plus` opens one menu containing enabled image/file selection and camera items; those actions MUST NOT appear as separate toolbar buttons. The microphone uses press/key down to begin and release to stop. In `auto`, an available `DictationAdapter` selects live dictation; otherwise an enabled voice-message capability records audio. Explicit `live_dictation` mode is valid only when `DictationAdapter.available` identifies an `embedded_model` or `api` provider; without it the microphone MUST NOT advertise live transcription. Demo adapters are development fixtures and MUST NOT activate production UI.
 
 Minimum Attachment Asset state is:
 
@@ -669,7 +670,7 @@ voice_input:
 
 `voice_message` records and sends a playable audio Message. The audio uploads through private Host-authorized storage, the Message becomes visible with duration and playback state, and a backend batch-ASR adapter produces a derived transcript before the assistant Run consumes text. The original audio is authoritative user content and follows Host retention and deletion policy; the transcript stores its source audio ID, language, adapter/version, confidence when available, status, and revision. A user correction creates a new transcript revision without erasing the automatic transcript. A correction made after an assistant response requires an explicit regenerate operation and MUST NOT replay prior non-idempotent work. Transcription failure leaves the audio Message readable and retryable and MUST NOT fabricate text or silently start the assistant Run.
 
-`live_dictation` streams partial ASR into the Composer and continuously replaces only the current dictation suffix. It requires an available Host-provided embedded/on-device ASR model adapter or an explicitly configured server API adapter. Stopping leaves editable text and never sends automatically. On-device failure MUST be disclosed before any server upload and MUST NOT silently reveal an API control that was not configured. Live-dictation audio is ephemeral by default and is not stored as a Message.
+`live_dictation` streams partial ASR into the Composer and continuously replaces only the current dictation suffix while the shared microphone is held. It requires an available Host-provided embedded/on-device ASR model adapter or an explicitly configured server API adapter. Releasing keeps editable text and never sends automatically. On-device failure MUST be disclosed before any server upload and MUST NOT silently reveal or switch to an API path that was not configured. Live-dictation audio is ephemeral by default and is not stored as a Message.
 
 An ASR adapter declares `batch`, `streaming`, or both; execution location `device` or `server`; accepted formats; languages; partial-result support; and retention behavior. If both modes are enabled, the Host provides an explicit mode switch or distinct gestures and persists the user preference only when permitted.
 
@@ -886,7 +887,7 @@ Minimum behavior:
 
 - preserve user drafts across recoverable failures;
 - keep one compact `AttachmentTray` inside the Composer above the text field, append repeated selections by default, show the configured limit before selection/send, preserve stable order, and expose per-item preview, progress, retry, removal, and reorder controls without enlarging the Composer around raw filenames;
-- render text, enabled attachment/camera/voice capabilities, available live dictation, and send in one `ComposerToolbar`; apply the Host's `below` horizontal or `side` vertical placement without changing capability semantics;
+- render `Plus`, hold-to-talk `Mic`, and `ArrowUp` in one `ComposerToolbar`; keep text implicit in the field, put enabled attachment/camera actions inside the `Plus` menu, and apply the Host's `below` horizontal or `side` vertical placement without changing capability semantics;
 - distinguish history loading, sending, streaming, tool execution, upload, transcription, and action application;
 - auto-follow streaming only while the user remains at the bottom;
 - preserve the reading anchor when older history is prepended;
@@ -1170,8 +1171,8 @@ Conformance is evidence-based and modular. Passing one module suite permits a cl
 | Attachment history and gallery | M0, M5, M6, M7, M12 | stable private IDs survive pagination, thumbnails open the authorized Message gallery, unavailable sources show labelled tombstones |
 | Attachment-derived Action | M0, M7, M11, M12 | source file/page/region provenance and Promotion targets are visible before confirmation; Host resource is created only after confirmation |
 | Voice message | M0, M1, M5, M6, M7, M12 | private playable audio persists, batch transcript completes before assistant consumption, failure remains retryable |
-| Live dictation | M5, M6, M7, M12 | an available embedded-model or API adapter makes the toolbar control visible; no adapter means no control; streaming fills an editable draft, never auto-sends, and retains no audio Message |
-| Composer toolbar placement | M5, M6, M7 | the same enabled tools render as one horizontal group below the text field or one vertical group beside it without overlap, mode select menus, or hidden send controls |
+| Live dictation | M5, M6, M7, M12 | an available embedded-model or API adapter changes the shared hold-to-talk microphone to live transcription; without it the microphone may use configured voice-message capture but MUST NOT claim live transcription; streaming fills an editable draft, never auto-sends, and retains no audio Message |
+| Composer toolbar placement | M5, M6, M7 | `Plus`, hold-to-talk `Mic`, and `ArrowUp` render as one horizontal group below the text field or one vertical group beside it without overlap, text-mode buttons, mode select menus, separate camera buttons, or hidden send controls |
 | Message time grouping | M0, M5, M6 | sequence order remains stable, continuous messages share one time anchor, five-minute/date boundaries create localized dividers, pagination recomputes without jump |
 | Long single Conversation | M1, M8, M13 | selected profile compiles a bounded Context View, original history remains unchanged, Manifest explains inclusion and exclusion |
 | Multiple Conversation continuity | M1, M5, M8, M10, M12 | Host-driven `conversation_id` changes isolate thread/draft/context state; authorized cross-conversation Memory and on-demand history retrieval retain provenance without leaking other scopes |
@@ -1199,7 +1200,7 @@ The MVP is complete when:
 - [ ] M0 schemas are frozen at `0.1` and the conformance command passes.
 - [ ] M1-M14 satisfy their module acceptance requirements.
 - [ ] A representative host embeds the default UI through a real Host Adapter.
-- [ ] Text, configurable below/side Composer Toolbar, compact previewable multi-image/file Attachment Tray, private upload/processing/retry, one-Message rendering, image Lightbox, file cards, explicit Attachment Promotion, persisted voice-message with backend transcript, and capability-gated live editable dictation flows work.
+- [ ] Text field input, configurable below/side `Plus`/hold-to-talk `Mic`/`ArrowUp` Composer Toolbar, unified attachment/camera menu, compact previewable multi-image/file Attachment Tray, private upload/processing/retry, one-Message rendering, image Lightbox, file cards, explicit Attachment Promotion, persisted voice-message with backend transcript, and capability-gated live editable dictation flows work.
 - [ ] Streaming Markdown, all six disclosure levels, tool activity, citations, and Action cards render through public contracts.
 - [ ] A `Level 1` Host Integration Manifest contributes a tool plus confirmed and allowlisted automatic Actions without custom plugin code.
 - [ ] Host Data Write Tools are absent by default; an approved Manifest can enable scoped create/update/upsert/delete/link/unlink tools without exposing raw SQL or unrestricted database access.

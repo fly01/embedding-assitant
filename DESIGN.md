@@ -58,7 +58,7 @@
 - Spacing/layout rhythm: mobile-first 8 px rhythm, minimum 44 px touch targets, stable composer footprint, and no horizontal overflow in ordinary message content.
 - Shape/radius/elevation: host-native panels and cards; action cards remain visually distinct without nested decorative card stacks.
 - Motion: short, purposeful transitions for streaming, tool progress, upload progress, and action outcomes; honor reduced motion.
-- Imagery/iconography: use the host icon system when available; never load arbitrary model-generated remote Markdown images.
+- Imagery/iconography: the framework default Composer icon set follows fit-assistant and uses Lucide `Plus`, `Mic`, `ArrowUp`, `Image`, and `Camera`; Hosts may replace the icon renderer while preserving accessible names and action semantics. Never load arbitrary model-generated remote Markdown images.
 
 ## Components
 
@@ -76,7 +76,9 @@ Default Composer behavior is:
 ```yaml
 composer:
   toolbar_placement: below
-  toolbar_tools: [attachment, camera, text, voice_message, send]
+  toolbar_tools: [plus_menu, hold_to_talk, send]
+  plus_menu_items: [image_or_file, camera]
+  voice_tool_mode: auto
 
 attachments:
   tray_position: inside_composer_above_text
@@ -86,7 +88,7 @@ attachments:
   required_attachment_failure: ask_user
 ```
 
-- `ComposerToolbar` is one compact button group. `below` places it horizontally below the text field; `side` places the same controls vertically beside the field. Attachment, camera, text, voice message, available live dictation, and send never split across select menus and unrelated rows. Icon-only controls retain accessible names and desktop tooltips.
+- `ComposerToolbar` is one compact fit-assistant-style button group. `below` places it horizontally below the text field; `side` places the same controls vertically beside the field. The text field itself is text input, so there is no text-mode button. `Plus` opens the image/file and camera menu; `Mic` is hold-to-talk; `ArrowUp` sends. Icon-only controls retain accessible names and desktop tooltips.
 - `AttachmentTray` is inside the Composer above the text field, hidden when empty, and shared with expanded input. Reopening selection appends. Images use compact bounded thumbnails with filename/status overlays and open the Lightbox before send. Non-images use bounded file cards with truncated name, size/status, and authorized preview. Reorder, retry, and remove use small overlay controls. Replacing or truncating a selection without prior disclosure is forbidden.
 - Validation and optimization complete before send. Private upload completes before Message submission. After send, processing may continue inside the Message while the assistant Run waits for required results. Required failure offers retry, remove-and-continue, or cancel; optional failure continues only with a visible warning.
 - Text and attachments form one Message group with one time anchor, delivery state, retry surface, and privacy scope. User attachments default above user text. Assistant-generated files default below explanatory text. `ContentPart.order` remains authoritative.
@@ -117,7 +119,7 @@ voice_input:
 ```
 
 - `voice_message`: record and send a playable audio bubble. Upload through private Host storage, show duration/playback immediately, display transcription progress, and start the assistant Run only after a transcript is ready. The resulting transcript is available as a collapsible caption. The original audio is authoritative user content under Host retention policy; the automatic transcript is derived, versioned, and linked to its audio source. Failure preserves the playable Message with retry and correction paths. Correcting a transcript after an assistant response offers explicit regenerate and never silently replays an earlier Action.
-- `live_dictation`: use streaming ASR to replace only the current dictation suffix in the Composer. The toolbar button exists only when the Host provides an available embedded/on-device model adapter or API adapter. Prefer an available on-device model; disclose a server API before audio leaves the device. Missing, unavailable, or demo-only adapters produce no production control, not a disabled option. Stopping keeps editable text and never sends automatically. Audio is ephemeral and is not a Message.
+- `live_dictation`: use streaming ASR to replace only the current dictation suffix while `Mic` is held. It is not a separate toolbar button. In `auto`, the microphone uses live dictation only when the Host provides an available embedded/on-device model adapter or API adapter; otherwise it may use enabled voice-message capture. Prefer an available on-device model and disclose a server API before audio leaves the device. Missing, unavailable, or demo-only adapters must never make the microphone claim live transcription. Releasing keeps editable text and never sends automatically. Live-dictation audio is ephemeral and is not a Message.
 - When both modes are enabled, use an explicit mode switch or clearly distinct gestures and labels. Never infer a mode change from provider failure. Persist user preference only when Host policy permits it.
 - ASR adapters declare `batch` and/or `streaming`, `device` or `server`, supported languages/formats, partial-result behavior, and retention behavior. The UI shows model download/preparation, permission denial, recording, upload, transcription, partial text, completion, failure, and retry as distinct states.
 
@@ -193,7 +195,7 @@ Payments, transfers, and other `dangerous` capabilities remain unavailable in th
 ## Accessibility
 
 - Target standard: WCAG 2.2 AA for the default web component kit.
-- Keyboard/focus behavior: Composer Toolbar buttons, Attachment Tray preview/removal/reorder/retry, file-card actions, Lightbox navigation/zoom/close with focus restoration, voice-mode switch, record/stop, voice-message playback, transcript retry/correction, Execution Mode settings, confirmed/automatic Action edit/undo controls, Privacy Center inventory/export/delete controls, stop/regenerate, reasoning disclosure, tool details, citations, and Action controls must be reachable, labelled, and visibly focused.
+- Keyboard/focus behavior: Composer Toolbar buttons, `Plus` menu items, keyboard-equivalent press/release for hold-to-talk, Attachment Tray preview/removal/reorder/retry, file-card actions, Lightbox navigation/zoom/close with focus restoration, voice-message playback, transcript retry/correction, Execution Mode settings, confirmed/automatic Action edit/undo controls, Privacy Center inventory/export/delete controls, stop/regenerate, reasoning disclosure, tool details, citations, and Action controls must be reachable, labelled, and visibly focused.
 - Contrast/readability: permission, confirmation, and error states never rely on color alone.
 - Screen-reader semantics: Attachment Tray announces count, order, kind, progress, error, and available action; image grid items announce gallery position and unavailable reason; file cards expose name/type/size/processing capability; time dividers expose full localized time; voice messages expose duration and transcription status; live dictation announces state without reading every partial replacement; automatic Action results announce execution mode and outcome once; Privacy Jobs announce category progress and partial/unresolved outcomes without flooding; streaming and tool status use restrained live regions; reasoning disclosures expose their current level and expanded state; raw trace does not continuously flood a live region; and Action cards announce current state and available operations.
 - Reduced motion and sensory considerations: waveform, loading, and streaming animations simplify or pause under reduced-motion preferences while recording state remains unambiguous.
@@ -221,7 +223,7 @@ Payments, transfers, and other `dangerous` capabilities remain unavailable in th
 
 ## Implementation constraints
 
-- Framework/styling system: MVP reference client uses Vue 3, TypeScript, and a headless store; the reference backend uses Python/FastAPI. An embedded Host creates and mounts the backend through one public API, and framework services remain under the namespaced `app.state.framed_assistant` boundary. Shell title/subtitle, typed user-facing label overrides, maintainer-settings visibility, Composer capabilities, and `below`/`side` toolbar placement are public props; passing an available `DictationAdapter` is the only way to expose live dictation. `--fa-shell-height` and `--fa-shell-min-height` adapt the default UI to Host navigation. English labels are complete defaults, while localization never requires component forks. Package consumers explicitly import `@framed-assistant/vue/style.css` before Host overrides; fallback component layout selectors remain scoped to their component root so custom content and Action renderers retain their own layout; the distributable contains library code, CSS, and types, not Reference Host application assets. JSON Schema and the event protocol are the cross-language source of truth.
+- Framework/styling system: MVP reference client uses Vue 3, TypeScript, `@lucide/vue`, and a headless store; the reference backend uses Python/FastAPI. An embedded Host creates and mounts the backend through one public API, and framework services remain under the namespaced `app.state.framed_assistant` boundary. Shell title/subtitle, typed user-facing label overrides, maintainer-settings visibility, Composer capabilities, voice-tool mode, and `below`/`side` toolbar placement are public props; passing an available `DictationAdapter` is the only way for `Mic` to claim live dictation. `--fa-shell-height` and `--fa-shell-min-height` adapt the default UI to Host navigation. English labels are complete defaults, while localization never requires component forks. Package consumers explicitly import `@framed-assistant/vue/style.css` before Host overrides; fallback component layout selectors remain scoped to their component root so custom content and Action renderers retain their own layout; the distributable contains library code, CSS, and types, not Reference Host application assets. JSON Schema and the event protocol are the cross-language source of truth.
 - Design-token constraints: semantic CSS variables and typed slot props; no application-specific palette in framework packages.
 - Performance constraints: paginated or virtualized history, bounded Attachment Tray and grid rendering, thumbnails only in Message lists, preview/original loading on demand, sequential or bounded-concurrency image decoding/optimization, stream backpressure, profile-driven token budgeting, one Context Compiler contract, and Context Manifest diagnostics.
 - Compatibility constraints: authenticated private-data Hosts, a supported namespaced backend mount surface that composes the Host lifespan and loads on the declared minimum FastAPI version, explicit empty-body `204` routes, immutable per-Run Host Context, reviewed Host Data Tool entity/operation/field/scope/concurrency manifests, Host-owned apply/undo/refresh adapters, reviewed versioned policies and allowlists, registered Privacy handlers, generic/generated integrations, resumable streams, Host-controlled media, batch/streaming device/server ASR, explicit fallback disclosure, mobile Safari attachment behavior, Host-owned multi-Conversation navigation, and release-time optional plugins.
@@ -229,9 +231,12 @@ Payments, transfers, and other `dangerous` capabilities remain unavailable in th
 
 ## Decision log
 
-- 2026-08-22 — `COMPOSER-TOOLBAR-01`: deployment screenshots showed that a full-width input-mode select separated text/voice/live modes from attachment, camera, and send. The default UI now uses one configurable button toolbar: horizontal below the text field or vertical beside it.
+- 2026-08-22 — `COMPOSER-TOOLBAR-01`: deployment screenshots showed that a full-width input-mode select separated text/voice/live modes from attachment, camera, and send. The decision to use a configurable horizontal/vertical toolbar remains; its initial separate mode/action buttons are superseded by `COMPOSER-DIRECT-ACTIONS-02`.
 - 2026-08-22 — `LIVE-DICTATION-GATE-01`: live dictation is an optional capability, not a decorative mode. It is rendered only for an available Host-provided embedded-model or API adapter; the household-finance Pilot intentionally hides it until one is configured.
 - 2026-08-22 — `DRAFT-ATTACHMENT-02`: deployment screenshots showed a Draft image rendered as a large filename/status row with no preview. Draft images now use compact clickable thumbnails and Draft files use bounded previewable cards; raw names/status cannot expand the Composer. Lightbox preview uses an explicit contain canvas so high-DPI metadata cannot shrink an otherwise large image to an unusable intrinsic CSS size.
+- 2026-08-22 — `COMPOSER-DIRECT-ACTIONS-02`: fit-assistant evidence removed the need for a text-mode button and separate attachment/camera buttons. The default toolbar is `Plus`, hold-to-talk `Mic`, and `ArrowUp`; `Plus` owns the image/file and camera menu.
+- 2026-08-22 — `VOICE-HOLD-02`: voice capture begins on pointer/key down and ends on release. An available live adapter fills editable transcription; otherwise the Host may configure the same microphone for private voice-message capture.
+- 2026-08-22 — `DEFAULT-ICONS-01`: the framework ships fit-assistant's Lucide Composer vocabulary as the default icon set while keeping Host replacement and accessibility contracts public.
 
 ## Open questions
 

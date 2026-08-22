@@ -3,6 +3,7 @@ export {
   DEFAULT_COMPOSER_CAPABILITIES,
   type ComposerCapabilities,
   type ComposerToolbarPlacement,
+  type ComposerVoiceToolMode,
 } from "./composer";
 export { DemoDictationAdapter, type DictationAdapter } from "./dictation";
 export { DEFAULT_ASSISTANT_LABELS, type AssistantLabels } from "./labels";
@@ -16,6 +17,7 @@ export { default as AttachmentLightbox } from "./components/AttachmentLightbox.v
 export { default as AttachmentTray } from "./components/AttachmentTray.vue";
 export { default as Composer } from "./components/Composer.vue";
 export { default as ConversationThread } from "./components/ConversationThread.vue";
+export { default as HoldToTalkButton } from "./components/HoldToTalkButton.vue";
 export { default as LiveDictationControl } from "./components/LiveDictationControl.vue";
 export { default as PrivacyCenter } from "./components/PrivacyCenter.vue";
 export { default as PrivacyJobStatus } from "./components/PrivacyJobStatus.vue";

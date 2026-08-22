@@ -121,7 +121,7 @@ The `labels` prop accepts typed partial overrides for Host localization while pr
 />
 ```
 
-Composer tools use one configurable button toolbar. `below` is the horizontal default; `side` creates a vertical rail:
+The default Composer follows fit-assistant: the text field needs no separate text-mode button, while one compact toolbar contains Lucide `Plus`, hold-to-talk `Mic`, and `ArrowUp`. `Plus` opens image/file and camera actions. `below` is the horizontal default; `side` creates a vertical rail:
 
 ```vue
 <AssistantShell
@@ -132,11 +132,12 @@ Composer tools use one configurable button toolbar. `below` is the horizontal de
     voiceMessage: true,
     liveDictation: true
   }"
+  composer-voice-tool-mode="auto"
   :dictation-adapter="configuredDictationAdapter"
 />
 ```
 
-Live dictation is rendered only when the Host passes an available embedded-model or API `DictationAdapter`. Omitting the adapter omits the control. Selected images render as compact clickable thumbnails and open the authorized Lightbox before send; selected files use bounded previewable cards.
+With `auto`, an available embedded-model/API `DictationAdapter` makes the shared microphone perform live transcription; otherwise an enabled voice-message capability records private audio. The mic never claims live transcription without an adapter. Selected images render as compact clickable thumbnails and open the authorized Lightbox before send; selected files use bounded previewable cards.
 
 To use an OpenAI-compatible Chat Completions endpoint:
 

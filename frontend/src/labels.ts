@@ -3,6 +3,8 @@ export interface AssistantLabels {
   messageInput: string;
   messagePlaceholder: string;
   attachFiles: string;
+  attachmentMenu: string;
+  chooseAttachment: string;
   inputTools: string;
   fileLimit: string;
   takePhoto: string;
@@ -13,6 +15,8 @@ export interface AssistantLabels {
   uploadAudio: string;
   recordVoice: string;
   stopVoice: string;
+  holdToTalk: string;
+  releaseToStop: string;
   startDictation: string;
   stopDictation: string;
   embeddedDictation: string;
@@ -34,6 +38,8 @@ export const DEFAULT_ASSISTANT_LABELS: AssistantLabels = {
   messageInput: "Message",
   messagePlaceholder: "Ask the assistant…",
   attachFiles: "Attach files",
+  attachmentMenu: "Attachment options",
+  chooseAttachment: "Choose image or file",
   inputTools: "Input tools",
   fileLimit: "8 files · 50 MiB total",
   takePhoto: "Camera",
@@ -44,6 +50,8 @@ export const DEFAULT_ASSISTANT_LABELS: AssistantLabels = {
   uploadAudio: "Upload audio",
   recordVoice: "Record voice message",
   stopVoice: "Stop recording",
+  holdToTalk: "Hold to talk",
+  releaseToStop: "Release to stop",
   startDictation: "Start live dictation",
   stopDictation: "Stop live dictation",
   embeddedDictation: "On-device model",

@@ -130,6 +130,17 @@ test("keeps attachment, Lightbox, live dictation, and voice-message behavior con
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
     "base64",
   );
+  await page.getByRole("button", { name: "Attach files" }).click();
+  const attachmentMenu = page.getByRole("menu", {
+    name: "Attachment options",
+  });
+  await expect(
+    attachmentMenu.getByRole("menuitem", { name: "Choose image or file" }),
+  ).toBeVisible();
+  await expect(
+    attachmentMenu.getByRole("menuitem", { name: "Camera" }),
+  ).toBeVisible();
+  await page.keyboard.press("Escape");
   await page.locator('input[type="file"][multiple]').setInputFiles({
     name: "pixel.png",
     mimeType: "image/png",
@@ -181,21 +192,30 @@ test("keeps attachment, Lightbox, live dictation, and voice-message behavior con
   );
   expect((await confirmed.json()).result.host_resource_ref).toBeTruthy();
 
-  await page.getByRole("button", { name: "Live dictation" }).click();
-  await page.getByRole("button", { name: "Start live dictation" }).click();
-  await page.getByRole("button", { name: "Stop live dictation" }).click();
+  const holdToTalk = page.locator(".hold-to-talk");
+  await holdToTalk.dispatchEvent("pointerdown", {
+    pointerId: 1,
+    pointerType: "mouse",
+  });
+  await expect(holdToTalk).toHaveAttribute("aria-label", "Release to stop");
+  await holdToTalk.dispatchEvent("pointerup", {
+    pointerId: 1,
+    pointerType: "mouse",
+  });
   await expect(page.getByRole("textbox", { name: "Message" })).toHaveValue(
     "Plan a calm weekend trip",
   );
 
-  await page.getByRole("button", { name: "Voice message" }).click();
-  await page.locator('input[type="file"][accept="audio/*"]').setInputFiles({
-    name: "voice.webm",
-    mimeType: "audio/webm",
-    buffer: Buffer.from("reference voice bytes"),
-  });
+  await page
+    .getByLabel("Composer voice tool mode")
+    .selectOption("voice_message");
+  await holdToTalk.hover();
+  await page.mouse.down();
+  await expect(holdToTalk).toHaveAttribute("aria-label", "Release to stop");
+  await page.waitForTimeout(150);
+  await page.mouse.up();
   await expect(page.getByRole("textbox", { name: "Message" })).toHaveValue(
-    "Voice message from voice.webm",
+    /Voice message from voice-\d+\.webm/,
   );
   await page.getByRole("button", { name: "Send" }).click();
   await expect(page.locator("audio")).toBeVisible();

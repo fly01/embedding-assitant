@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { ChevronLeft, ChevronRight, File, RotateCw, X } from "@lucide/vue";
 import { computed, onBeforeUnmount, ref, watch } from "vue";
 import type { AssistantApi } from "../api";
 import type { AssistantLabels } from "../labels";
@@ -119,9 +120,9 @@ function closeLightbox(): void {
           :src="thumbnailUrls[attachment.id]"
           :alt="attachment.name"
         />
-        <span v-else class="tray-kind" aria-hidden="true">{{
-          attachment.kind.slice(0, 1).toUpperCase()
-        }}</span>
+        <span v-else class="tray-kind" aria-hidden="true">
+          <File :size="18" />
+        </span>
         <span class="tray-copy">
           <strong>{{ attachment.name }}</strong>
           <small v-if="attachment.kind !== 'image'"
@@ -145,7 +146,7 @@ function closeLightbox(): void {
           "
           @click="emit('move', index, -1)"
         >
-          ‹
+          <ChevronLeft :size="16" aria-hidden="true" />
         </button>
         <button
           type="button"
@@ -155,7 +156,7 @@ function closeLightbox(): void {
           "
           @click="emit('move', index, 1)"
         >
-          ›
+          <ChevronRight :size="16" aria-hidden="true" />
         </button>
         <button
           v-if="attachment.processing_status === 'failed'"
@@ -163,7 +164,7 @@ function closeLightbox(): void {
           :aria-label="label(labels.retryAttachment, { name: attachment.name })"
           @click="emit('retry', attachment.id)"
         >
-          ↻
+          <RotateCw :size="14" aria-hidden="true" />
         </button>
         <button
           type="button"
@@ -172,7 +173,7 @@ function closeLightbox(): void {
           "
           @click="emit('remove', attachment.id)"
         >
-          ×
+          <X :size="15" aria-hidden="true" />
         </button>
       </div>
     </li>

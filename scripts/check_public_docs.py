@@ -7,7 +7,6 @@ import re
 import sys
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[1]
 PUBLIC_DOCS = (
     ROOT / "README.md",
@@ -120,10 +119,15 @@ REQUIRED_SPEC_TERMS = (
     "COMPOSER-TOOLBAR-01",
     "LIVE-DICTATION-GATE-01",
     "DRAFT-ATTACHMENT-02",
+    "COMPOSER-DIRECT-ACTIONS-02",
+    "VOICE-HOLD-02",
+    "DEFAULT-ICONS-01",
     "toolbar_placement: below | side",
     "DictationAdapter.available",
-    "UI MUST omit the control",
+    "microphone MUST NOT advertise live transcription",
     "Draft image items use bounded thumbnails",
+    "interaction: hold_to_talk",
+    "items: [image_or_file, camera]",
     "transcription.started",
     "transcription.delta",
     "transcription.completed",

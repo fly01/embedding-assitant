@@ -87,7 +87,7 @@ The MVP does not include:
 | Reasoning summary | Provider-supplied or separately generated user-readable explanation of key reasoning steps. |
 | Provider reasoning trace | Raw reasoning content explicitly returned by a model provider. It does not include hidden internal state that the provider does not expose. |
 | Disclosure level | Host-bounded setting controlling how much status, activity, developer data, or provider reasoning trace is visible. |
-| Conversation mode | Host configuration selecting one active Conversation per scope (`single`) or multiple user-manageable Conversations (`multiple`). |
+| Conversation mode | Host configuration selecting one active Conversation per scope (`single`) or multiple Host-managed Conversations (`multiple`). |
 | Context profile | Named policy preset controlling which sources the Context Compiler may use and how it allocates the model token budget. |
 | Context segment | Internal, user-invisible group of complete turn groups used as a compaction and retrieval boundary. |
 | Working Ledger | Rebuildable structured state for active goals, constraints, corrections, decisions, open threads, and entity or Action references. |
@@ -148,7 +148,7 @@ Every stage MUST remain independently deployable.
 
 ### Conversation topology and context profiles
 
-Single- and multi-conversation modes use the same `Conversation`, Runtime, event, and storage contracts. The Host supplies a scope key; `single` permits at most one active Conversation in that scope, while `multiple` permits creation, switching, renaming, archiving, and deletion.
+Single- and multi-conversation modes use the same `Conversation`, Runtime, event, and storage contracts. The Host supplies the scope and active `conversation_id`. `single` permits at most one active Conversation in that scope. In `multiple`, the Host owns listing, creation, switching, naming, archival, and deletion UI; the framework renders and runs only the active Conversation.
 
 Conversation topology and context strategy are independent settings:
 
@@ -224,7 +224,7 @@ Payments, transfers, and other `dangerous` capabilities are unavailable in the M
 | `MemoryRecord` | Explicit long-term information | provenance, scope, visibility, revision history |
 | `AuditEvent` | Security and debugging evidence | actor, operation, decision, redaction metadata |
 | `HostIntegrationState` | Active declarative/generated integration | Manifest version, review status, unresolved risks, adapter bindings |
-| `PluginState` | Installed plugin activation state | plugin version, contract range, configuration, migration state |
+| `PluginState` | Installed plugin activation state | plugin version, contract range, configuration, data schema version, enablement state |
 | `PrivacyResource` | User-visible assistant data category | owner, scope, retention, processor, export/delete capabilities |
 | `PrivacyJob` | Export or deletion workflow | request scope, preview, confirmation, status, item results, audit reference |
 
@@ -378,7 +378,7 @@ The protocol is transport-neutral. The reference server exposes:
 
 The reference implementation uses Server-Sent Events for run events. A run request MUST persist the user message before model execution and return `run_id` plus the latest sequence number. Clients resume with `after_seq`.
 
-In `multiple` mode, the collection endpoint lists authorized Conversations and the patch endpoint handles rename and archive state. Conversation deletion uses the scoped Privacy deletion preview and job flow rather than bypassing it with a direct transport delete.
+In `multiple` mode, these collection and patch endpoints support Host-owned navigation; they are not default assistant UI. Conversation deletion uses the scoped Privacy deletion preview and job flow rather than a direct transport delete.
 
 ### Error model
 
@@ -527,9 +527,9 @@ Essentials includes date/time/time-zone operations, a calculator, unit conversio
 
 Custom Domain Plugins are optional and are installed at release time through the Host build or package manager. Installed plugins MAY be enabled or disabled at runtime through Host configuration. The MVP MUST NOT download or execute arbitrary remote plugin code.
 
-**Responsibilities:** Integration Manifest and Plugin Manifest validation, protocol compatibility, dependency checks, review state, unresolved-risk gates, permission declarations, configuration schema, Privacy Resource plus export/delete/invalidation handler registration, generic and custom renderer registration, migration preflight, enable/disable state, and fail-closed activation.
+**Responsibilities:** Integration Manifest and Plugin Manifest validation, protocol compatibility, dependency checks, review state, unresolved-risk gates, permissions, configuration, Privacy handlers, renderer registration, enable/disable state, and fail-closed activation.
 
-**Acceptance:** draft or unresolved Integration Manifests do not activate write mappings; integrations or plugins that persist undeclared data or lack required export/delete/invalidation handlers do not activate; incompatible plugins do not activate; disabled plugins expose no new tools or Actions; a renderer failure uses a safe generic renderer; upgrade preflight leaves the previously deployed version active on failure; historical content remains readable without an active custom renderer.
+**Acceptance:** draft or unresolved Integrations do not activate writes; privacy-incomplete or incompatible plugins do not activate; disabled plugins expose no new tools or Actions; renderer failure uses a generic fallback; historical content remains readable. v0.1 rejects plugin versions that require plugin-owned data migration rather than orchestrating that migration.
 
 ### M5. Frontend Headless SDK
 
@@ -543,9 +543,9 @@ Custom Domain Plugins are optional and are installed at release time through the
 
 **Purpose:** provide an opinionated interface that is ready to ship and remains themeable.
 
-Required components include `AssistantShell`, `ConversationThread`, `ConversationSwitcher`, `ConversationManager`, `MessageTimeDivider`, `UserMessage`, `AssistantMessage`, `StreamingMarkdown`, `ThinkingDisclosure`, `ToolActivity`, `Composer`, `AttachmentTray`, `AttachmentGrid`, `AttachmentFileCard`, `AttachmentProcessingStatus`, `AttachmentLightbox`, `VoiceMessageBubble`, `LiveDictationControl`, `TranscriptionStatus`, `ActionCard`, `AutoAppliedResultCard`, `ExecutionModeSettings`, `HostDataToolSettings`, `CitationList`, `PrivacyCenter`, `PrivacyJobStatus`, `ErrorBanner`, `StopButton`, `RegenerateButton`, and plugin renderer slots.
+Required components include `AssistantShell`, `ConversationThread`, `MessageTimeDivider`, `UserMessage`, `AssistantMessage`, `StreamingMarkdown`, `ThinkingDisclosure`, `ToolActivity`, `Composer`, `AttachmentTray`, `AttachmentGrid`, `AttachmentFileCard`, `AttachmentProcessingStatus`, `AttachmentLightbox`, `VoiceMessageBubble`, `LiveDictationControl`, `TranscriptionStatus`, `ActionCard`, `AutoAppliedResultCard`, `ExecutionModeSettings`, `HostDataToolSettings`, `CitationList`, `PrivacyCenter`, `PrivacyJobStatus`, `ErrorBanner`, `StopButton`, `RegenerateButton`, and plugin renderer slots.
 
-**Acceptance:** panel, drawer, inline, and full-page modes work at mobile and desktop widths; `multiple` mode exposes authorized create, switch, rename, archive, and Privacy-Job deletion paths; keyboard and screen-reader paths cover every operation; the five-minute default time-grouping rule survives pagination without moving the reading anchor; Attachment Tray location, multi-selection, stable order, per-item retry, message grouping, gallery navigation, and unavailable-source states remain consistent across surfaces; both voice modes expose distinct states and privacy expectations; Privacy Center inventory, preview, export, deletion, partial failure, and retention-limit states are accessible; internal tool identifiers remain hidden below developer level; all six disclosure levels render distinctly; `raw_trace` shows the full provider-supplied trace when available and an explicit unavailable state otherwise.
+**Acceptance:** panel, drawer, inline, and full-page modes work at mobile and desktop widths; Host-driven active-Conversation changes rebind the thread without adding framework-owned navigation; keyboard and screen-reader paths cover every operation; chronology, multimodal flows, both voice modes, Privacy Center, tool visibility, six disclosure levels, and `raw_trace` availability remain consistent.
 
 ### M7. Multimodal Input Pack
 
@@ -810,8 +810,8 @@ The minimum `Level 3` custom plugin manifest contains:
   "actions": ["sample.update"],
   "renderers": ["sample.result", "sample.action"],
   "privacy_resources": ["sample.private-cache"],
-  "configuration_schema": "schemas/sample-config.json",
-  "migrations": []
+  "data_schema_version": "1",
+  "configuration_schema": "schemas/sample-config.json"
 }
 ```
 
@@ -824,13 +824,12 @@ Custom Plugin lifecycle requirements:
 1. Install through the Host build or package manager.
 2. Register the manifest.
 3. Validate protocol compatibility, dependencies, configuration, and permissions.
-4. Run migration preflight when required.
-5. Enable through Host configuration.
-6. Disable without leaving callable tools or active renderers.
-7. Upgrade only after compatibility and migration checks pass.
-8. Roll back through the Host release system if deployment fails.
+4. Register required Privacy handlers.
+5. Enable or disable through Host configuration without leaving callable capabilities behind.
 
-Plugins MUST fail closed. A missing permission, incompatible protocol range, invalid schema, or failed migration prevents activation.
+Plugins MUST fail closed. A missing permission, incompatible protocol range, invalid schema, missing Privacy handler, or incompatible `data_schema_version` prevents activation. Plugin data migration, automated upgrade, and rollback orchestration are deferred beyond v0.1.
+
+A replacement plugin version ships through a new Host release and may activate only when its protocol, configuration, permissions, Privacy handlers, and existing data version are already compatible.
 
 When a plugin is disabled, every non-terminal Pending Action contributed by that plugin that has not begun applying enters `blocked_plugin_disabled`. The framework MUST NOT cancel or execute it automatically. Compatible re-enable triggers permission, payload, schema, version, and execution-policy revalidation before the Action returns to `policy_evaluating`. Permanent removal allows manual cancellation or archival. Applied Actions remain readable through stored data and a generic renderer.
 
@@ -868,7 +867,7 @@ Minimum behavior:
 - expose the active execution mode in settings and mark every Action result as confirmed, automatically applied, blocked, or read-only; an auto-applied result remains visible with policy reason and edit/undo only when supported;
 - downgrade an ineligible automatic Action to `awaiting_confirmation` or `blocked` with an explanation rather than treating it as an execution error;
 - render `blocked_plugin_disabled` Actions as readable but non-confirmable, with compatible re-enable, manual cancel, and archival guidance;
-- provide a unified Privacy Center with category inventory, retention owner, export, deletion preview, destructive confirmation, progress, partial-result, retry, and unresolved-processor states;
+- provide two Privacy surfaces: `PrivacyCenter` for registered inventory/export/deletion entry and `PrivacyJobStatus` for preview, confirmation, progress, partial-result, retry, and unresolved processors;
 - provide accessible error, retry, cancellation, and permission-denied states;
 - meet WCAG 2.2 AA for the default web kit;
 - support reduced motion and 44 px minimum touch targets;
@@ -889,9 +888,9 @@ Cancelled actions and unverified model statements MUST NOT become Memory. Contex
 
 ## Privacy Center and data lifecycle
 
-Privacy Center is part of the mandatory Safety & Governance baseline. It presents one authorized inventory across core modules, official packages, Host Integration Manifests, and optional plugins.
+Privacy Center is part of the mandatory Safety & Governance baseline. It presents one authorized inventory across Core, enabled official packages, Host Integration Manifests, and optional plugins. Categories appear only when a registered resource exists.
 
-Minimum resource categories are:
+Registered resource categories are:
 
 | Category | Examples | Default control |
 | --- | --- | --- |
@@ -919,9 +918,11 @@ Deletion is source-aware. Removing a Message, attachment, transcript, Memory rec
 
 Privacy Center does not silently delete committed Host business records. Applied Actions link to the Host-owned object and its deletion controls. Audit records MAY retain a minimal tombstone when required for security, abuse prevention, or law; the UI and export disclose the reason, fields retained, owner, and retention period.
 
-Every integration or plugin that persists data MUST register its Privacy Resources and handlers before activation. Disablement or package removal cannot orphan user data: export and deletion handlers remain available through a stable Host boundary or migration package until the declared retention period ends.
+Every integration or plugin that persists data MUST register its Privacy Resources and handlers before activation. Disablement or package removal cannot orphan user data: a stable Host handler remains available until the declared retention period ends.
 
 Privacy Jobs are scoped to the authenticated actor and Host scope, require destructive confirmation for deletion, emit `privacy.job.updated`, preserve item-level results, and never report full success when any registered processor is unresolved. External processors are reported individually; the framework cannot claim their deletion completed without processor confirmation.
+
+The default UI uses only two surfaces: `PrivacyCenter` for the inventory and action entry points, and `PrivacyJobStatus` for preview, confirmation, progress, result, and retry. Hosts MAY replace either through Headless state.
 
 ## Security and privacy
 
@@ -965,7 +966,7 @@ Privacy Jobs are scoped to the authenticated actor and Host scope, require destr
 - Removing a field, changing its meaning, or changing required state transitions requires a new protocol major version.
 - Clients MUST tolerate unknown event types and optional fields.
 - Stored Actions, Action Policy Decisions, summaries, Host Integration Manifests, execution policies, and plugin configuration MUST retain the schema version used to create them.
-- Migration code MUST be deterministic, testable, and reversible through release rollback or explicit compensating migration.
+- Core and framework-owned migration code MUST be deterministic, testable, and reversible through release rollback or explicit compensating migration. Plugin-owned data migration and automated plugin rollback are not part of v0.1.
 
 ## Parallel implementation plan
 
@@ -986,7 +987,7 @@ The following lanes run in parallel against M0:
 | Runtime | M1 | Conversation/Run lifecycle, persistence, provider adapters, ordered/resumable events, cancellation/reconciliation, usage |
 | Host boundary | M2 | Actor/scope/page context, permission decisions, Host Data Tool catalog, transactional Action application, refresh |
 | Tool runtime | M3 | Registry, validation, visibility, Host Data Write Tool generator, timeout/retry, typed-Action routing |
-| Integration/plugin | M4 | Manifest validation, review gates, capability/renderer/privacy registration, enable/disable, migration preflight |
+| Integration/plugin | M4 | Manifest validation, review gates, capability/renderer/privacy registration, compatibility, enable/disable |
 | Headless state | M5 | Replay reducers for Conversation, Message, time, Attachment, Voice, Reasoning, Tool, Action, Privacy, Context |
 | Safety/governance | M12 | Permissions, execution policy, forced confirmation, redaction, audit, quotas, Privacy registry/jobs |
 | Developer tooling | M13 | Mock model/Host/processors, fixtures, inspectors, Integration Generator, Data Tool simulator, replay/failure injection |
@@ -999,7 +1000,7 @@ The following lanes run in parallel on Wave 1 public contracts or fakes:
 
 | Lane | Modules | Deliverables |
 | --- | --- | --- |
-| Default experience | M6 | Shell/Conversation management/Thread/Composer, message time, Attachment UI/Lightbox, Voice UI, Reasoning, Tool/Citation, Action modes, Privacy Center, accessibility/responsive states |
+| Default experience | M6 | Shell/Thread/Composer, message time, Attachment UI/Lightbox, Voice UI, Reasoning, Tool/Citation, Action modes, two-surface Privacy Center, accessibility/responsive states |
 | Multimodal | M7 | Attachment Asset lifecycle, private variants, processors, Run gates, Promotion, voice_message/live_dictation adapters |
 | Context | M8 | `lite`/`balanced`/`durable`, segmentation, ledger, summaries, retrieval, invalidation, rebuild, Context Manifest |
 | Knowledge | M9 | Search/URL/document/Host knowledge adapters, citations, freshness/trust, external permission and budgets |
@@ -1060,7 +1061,7 @@ Conformance is evidence-based and modular. Passing one module suite permits a cl
 
 - cover direct embed, declarative Manifest, generated Manifest review, and custom Domain Plugin paths;
 - verify Integration Generator read scaffolding, write-proposal and auto-apply eligibility review gates, unresolved-risk reporting, and zero activation before review;
-- validate Manifest schema versions, plugin protocol ranges, dependencies, configuration, capability/permission declarations, Privacy Resources, migrations, renderer registration, and fail-closed activation;
+- validate Manifest schema versions, plugin protocol/data-schema compatibility, dependencies, configuration, capability/permission declarations, Privacy Resources, renderer registration, and fail-closed activation;
 - disable integrations/plugins without leaving callable tools or orphaning export/delete handlers; historical rendering remains available through generic fallback;
 - verify `blocked_plugin_disabled` Actions, compatible re-enable revalidation, permanent removal cancellation/archival, and applied-history readability.
 
@@ -1068,17 +1069,17 @@ Conformance is evidence-based and modular. Passing one module suite permits a cl
 
 - replay every event into serializable reducers for Conversation, Message/time, Attachment, Voice, Reasoning, Tool/Citation, Action/Policy, Context, and Privacy;
 - cover per-scope duplicates, out-of-order/gap detection, optimistic/local IDs, persisted reconciliation, cache restore, and unknown states;
-- preserve draft text/attachments, reading anchors, bottom-follow ownership, item order, retry state, and per-Message grouping through failure and pagination;
+- preserve per-Conversation draft text/attachments, reading anchors, bottom-follow ownership, item order, retry state, and per-Message grouping through failure, pagination, and Host-driven active-Conversation changes;
 - verify state has no visual-framework or Host-business dependency and can run entirely against C0 fixtures.
 
 ### C5. Default UI and Multimodal conformance
 
-- expose independently runnable fixture groups for Shell/Conversation management/Thread/Composer, chronology, Attachment, Voice, Reasoning/Tool/Citation, Action modes, Privacy Center, accessibility, responsive, and recovery behavior rather than one monolithic visual suite;
+- expose independently runnable fixture groups for Shell/Thread/Composer, Host-driven Conversation switching, chronology, Attachment, Voice, Reasoning/Tool/Citation, Action modes, the two Privacy surfaces, accessibility, responsive, and recovery behavior rather than one monolithic visual suite;
 - component, keyboard, focus, screen-reader, reduced-motion, contrast, 320/360 px, desktop, safe-area, and visual-regression fixtures;
 - five-minute message-time grouping, cross-date/timezone labels, pagination recomputation, exact-time detail, and in-place status updates;
 - Attachment Asset/Draft/Message-Part lifecycle, Tray placement/append/limit/reorder, per-item states/retry, one-Message grouping, grids, file cards, Lightbox, tombstones, private variants, Run gates, provenance, Promotion, and privacy invalidation;
 - voice-message and live-dictation modes across batch/streaming and device/server ASR, transcript revision, privacy, failure, and fallback disclosure;
-- six Reasoning Disclosure levels, Tool/Citation UI, confirmed/automatic/blocked Action cards, Host Data Tool settings, Privacy Center, and recovery states.
+- six Reasoning Disclosure levels, Tool/Citation UI, confirmed/automatic/blocked Action cards, Host Data Tool settings, `PrivacyCenter`/`PrivacyJobStatus`, and recovery states.
 
 ### C6. Context, Retrieval, and Memory conformance
 
@@ -1118,7 +1119,7 @@ Conformance is evidence-based and modular. Passing one module suite permits a cl
 
 - run one representative real Host plus wellness, itinerary, and household-finance fixtures through the same public contracts;
 - prove Level 0–3 integration, single/multiple Conversation, all Context Profiles, both Voice modes, Attachment/Promotion, Retrieval/Memory, Host Data Write Tools, confirmed/automatic Actions, Reasoning, plugin disablement, and Privacy Center;
-- cover cold start, long history, offline/interruption recovery, permission change, optimistic conflict, duplicate request, partial result, deletion, migration, and rollback;
+- cover cold start, long history, offline/interruption recovery, permission change, optimistic conflict, duplicate request, partial result, deletion, Core migration, and release rollback;
 - confirm no domain field enters Core schemas and at least one real Host replaces a duplicated assistant path rather than running a side demo;
 - capture release-ready performance, security, privacy, accessibility, visual, migration, and observability evidence.
 
@@ -1136,7 +1137,7 @@ Conformance is evidence-based and modular. Passing one module suite permits a cl
 | Live dictation | M5, M6, M7, M12 | on-device or disclosed server streaming fills an editable draft, never auto-sends, and retains no audio Message |
 | Message time grouping | M0, M5, M6 | sequence order remains stable, continuous messages share one time anchor, five-minute/date boundaries create localized dividers, pagination recomputes without jump |
 | Long single Conversation | M1, M8, M13 | selected profile compiles a bounded Context View, original history remains unchanged, Manifest explains inclusion and exclusion |
-| Multiple Conversation continuity | M1, M5, M8, M10, M12 | switching Conversations isolates local context; authorized cross-conversation Memory and on-demand history retrieval return provenance without leaking other scopes |
+| Multiple Conversation continuity | M1, M5, M8, M10, M12 | Host-driven `conversation_id` changes isolate thread/draft/context state; authorized cross-conversation Memory and on-demand history retrieval retain provenance without leaking other scopes |
 | Reasoning disclosure lifecycle | M0, M1, M5, M6, M12 | provider none/summary/trace capability, Host/viewer level, raw_trace unavailable or visible state, Privacy export/delete, and Context/Memory exclusion stay consistent |
 | Read-only execution mode | M2, M3, M11, M12 | write proposal is rejected or converted to non-executable guidance; no Host mutation occurs |
 | Disabled Host Data Write Tools | M2, M3, M4, M12 | model manifest contains no database write capability and no Host mutation path is reachable |
@@ -1151,7 +1152,7 @@ Conformance is evidence-based and modular. Passing one module suite permits a cl
 | External retrieval | M6, M9, M12 | citation, freshness, permission, and budget enforcement |
 | Deleted Memory | M8, M10, M13 | record no longer enters context; audit remains |
 | Unified privacy deletion | M0, M4, M6, M8, M10, M12, M13 | source data and registered derivatives are removed or invalidated, Host-owned records are handed off, partial processors remain visible and retryable |
-| Version migration and rollback | M0, M1, M4, M8, M11, M12, M13 | protocol/plugin/Manifest/stored Action/Context/PrivacyJob fixtures migrate deterministically, remain readable, and recover through rollback or compensating migration |
+| Version migration and rollback | M0, M1, M8, M11, M12, M13 | protocol/Manifest/stored Action/Context/PrivacyJob fixtures migrate deterministically, remain readable, and recover through rollback or compensating migration |
 | Domain portability | M0, M4, M11, M14 | three examples introduce no domain fields into core |
 
 ## MVP acceptance criteria
@@ -1183,6 +1184,7 @@ The following work is intentionally deferred beyond the MVP:
 - additional official UI kits for React, SwiftUI, and other frameworks beyond the MVP Vue 3 reference client;
 - vector database and embedding-provider standardization;
 - signed plugin distribution and remote update infrastructure;
+- plugin-owned data migration, automated plugin upgrades, and plugin rollback orchestration;
 - cross-application Memory federation;
 - multi-agent orchestration;
 - autonomous background tasks and proactive notifications;

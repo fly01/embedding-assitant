@@ -38,13 +38,13 @@ The framework manages assistant behavior. The host application keeps control of 
 - **Default-off Host Data Write Tools:** reviewed schema-bound create/update/upsert/delete/link/unlink tools can write through a Host transaction adapter, but the model never receives raw SQL, credentials, or unrestricted database access.
 - **Configurable reasoning disclosure:** hosts can choose from hidden status through contextual activity, developer diagnostics, and an opt-in `raw_trace` level that displays the complete reasoning trace returned by a capable model provider.
 - **Rebuildable context summaries:** Context Management never deletes or rewrites original messages.
-- **Configurable conversation and context policy:** single and multiple Conversation modes share one Runtime; `lite`, `balanced`, and `durable` profiles share one Context Compiler.
+- **Configurable conversation and context policy:** single and Host-managed multiple Conversation modes share one Runtime; `lite`, `balanced`, and `durable` profiles share one Context Compiler.
 - **Progressive Host integration:** applications can start with direct embed, move to a declarative or generated Host Integration Manifest, and write a custom Domain Plugin only when configuration cannot express the required behavior safely.
 - **Chat-native chronology:** sequence-stable Messages use localized time dividers only at the first visible Message, a date boundary, or a configurable inactivity gap that defaults to five minutes.
 - **Two voice modes:** persisted playable `voice_message` input uses backend batch transcription, while `live_dictation` uses on-device or disclosed server streaming ASR to fill an editable draft.
 - **One Attachment System:** draft selection, private upload, parsing, Message rendering, Lightbox preview, retry, provenance, Privacy cleanup, and explicit Host Promotion share one contract.
 - **Unified Privacy Center:** users can inventory, export, and delete registered assistant data from one place, with explicit retention limits and derived-data cleanup.
-- **Controlled plugins:** plugins are installed during a release and may be enabled or disabled at runtime; arbitrary remote code installation is out of scope for the MVP.
+- **Controlled plugins:** plugins are installed during a release and may be enabled or disabled at runtime; arbitrary remote installation and plugin-owned data migration/automated rollback are out of scope for v0.1.
 
 ## Architecture
 
@@ -96,7 +96,7 @@ Each module publishes fixtures or fakes so teams can work in parallel after M0 c
 
 | Setting | Options | Meaning |
 | --- | --- | --- |
-| Conversation mode | `single`, `multiple` | One active Conversation or several manageable Conversations per Host-defined scope |
+| Conversation mode | `single`, `multiple` | One active Conversation or several Host-managed Conversations; the framework renders the active `conversation_id` |
 | Context profile | `lite` | Host facts, current input, current Action state, and recent raw turns |
 | Context profile | `balanced` | `lite` plus a Working Ledger, summaries, relevant history retrieval, and a Context Manifest |
 | Context profile | `durable` | `balanced` plus immutable segments, correction tracking, hybrid raw retrieval, invalidation, rebuild, and complete provenance |
@@ -158,10 +158,10 @@ Hosts enable individual entities, operations, writable fields, actor/tenant row 
 
 ### Privacy Center
 
-Privacy Center is part of the mandatory Safety & Governance baseline. It covers Conversations and Messages, attachments, voice-message audio, transcript revisions, Memory, retained raw traces, context artifacts, Pending Actions, and declared integration/plugin data.
+Privacy Center is part of the mandatory Safety & Governance baseline. It shows only registered categories across Conversations/Messages, media/transcripts, Memory, retained traces, context, Actions, and extension data.
 
-- Exports use private authenticated delivery and include a machine-readable category/schema manifest.
-- Deletion shows an impact preview, requires confirmation, and removes or invalidates registered derived summaries, ledgers, indexes, manifests, and caches.
+- `PrivacyCenter` is the single inventory and export/deletion entry surface; `PrivacyJobStatus` contains preview, confirmation, progress, partial results, and retry.
+- Exports use private authenticated delivery and include a machine-readable category/schema manifest. Deletion removes or invalidates registered derived summaries, ledgers, indexes, manifests, and caches.
 - Host-owned committed business records link to Host deletion controls rather than being silently deleted.
 - Required audit or legal retention is disclosed with retained fields, reason, owner, and expiry.
 - Partial or unresolved processors remain visible and retryable; the framework never reports full success without confirmation.

@@ -28,13 +28,13 @@
 
 - Primary personas: application developers embedding the assistant, maintainers reviewing generated Integration Manifests, plugin authors adding specialized capabilities, and product users asking the assistant to understand or act on current application context.
 - User jobs: ask and follow up, attach an image or file, send a voice message, dictate editable text, understand visible activity, review proposed changes, confirm or revise Actions, understand automatically applied results, edit or undo when supported, inspect retention, export or delete assistant data, and recover from interrupted work.
-- Developer jobs: register tools, expose bounded context, declare permissions, implement host-side actions, provide domain renderers, theme the assistant, inspect event streams, and test upgrades without a live model.
+- Developer jobs: register tools, expose bounded context, declare permissions, implement host-side actions, provide domain renderers, theme the assistant, inspect event streams, and test protocol compatibility without a live model.
 - Key contexts of use: mobile-first private applications, authenticated user or workspace scopes, long conversations, slow networks, and workflows using read-only, per-Action confirmation, or bounded automatic application.
 
 ## Information architecture
 
 - Primary navigation: owned by the host application; the framework supplies embeddable surfaces rather than a global navigation model.
-- Core routes/screens: `AssistantPanel`, `AssistantDrawer`, `AssistantInline`, `AssistantFullScreen`, conversation history and management when `multiple` mode is enabled, and development-only inspector surfaces.
+- Core routes/screens: `AssistantPanel`, `AssistantDrawer`, `AssistantInline`, `AssistantFullScreen`, and development-only inspectors. In `multiple` mode, Conversation history and management remain Host-owned navigation.
 - Content hierarchy: conversation thread first; composer second; thinking, tool, citation, and action state inline with the relevant assistant turn; high-risk confirmation always explicit.
 
 ## Design principles
@@ -63,7 +63,7 @@
 ## Components
 
 - Existing patterns to preserve as behavioral evidence: streaming Markdown, sequence-stable paginated history, grouped message-time dividers, multimodal composition, multi-image selection, private thumbnail/preview/original variants, playable voice messages, editable live dictation, visible tool activity, resumable streams, and editable confirm/cancel Action cards.
-- New/changed components: headless assistant store, assistant shell, conversation thread, `ConversationSwitcher`, `ConversationManager`, `MessageTimeDivider`, message-part renderers, multimodal composer, `AttachmentTray`, `AttachmentGrid`, `AttachmentFileCard`, `AttachmentProcessingStatus`, `AttachmentLightbox`, `VoiceMessageBubble`, `LiveDictationControl`, `TranscriptionStatus`, reasoning disclosure, tool activity, citations, Action Workspace, `ExecutionModeSettings`, `HostDataToolSettings`, `AutoAppliedResultCard`, `PrivacyCenter`, `PrivacyResourceList`, `DeletionImpactPreview`, `PrivacyJobStatus`, error recovery, plugin slots, Host-context badges, Integration Manifest editor/review, generated-risk report, Context Profile settings, Context Manifest inspector, and developer inspectors.
+- New/changed components: headless assistant store, assistant shell, conversation thread, `MessageTimeDivider`, message-part renderers, multimodal composer, `AttachmentTray`, `AttachmentGrid`, `AttachmentFileCard`, `AttachmentProcessingStatus`, `AttachmentLightbox`, `VoiceMessageBubble`, `LiveDictationControl`, `TranscriptionStatus`, reasoning disclosure, tool activity, citations, Action Workspace, `ExecutionModeSettings`, `HostDataToolSettings`, `AutoAppliedResultCard`, `PrivacyCenter`, `PrivacyJobStatus`, error recovery, plugin slots, Host-context badges, Integration Manifest editor/review, generated-risk report, Context Profile settings, Context Manifest inspector, and developer inspectors.
 - Variants and states: inline, drawer, side panel, and full-screen tab; signed out, disabled by Host, loading history, streaming, interrupted, offline, attachment selected/validating/optimizing/uploading/uploaded/processing/ready/partial/failed/unsupported/blocked, required attachment waiting for user decision, Attachment Lightbox open/unavailable, recording voice message, voice message transcribing, voice transcription failed, live dictation loading/listening/partial/final, permission denied, Host data tools disabled/enabled/review-blocked/unauthorized/conflicted, execution read-only/policy-evaluating/awaiting-confirmation/auto-applying/auto-applied/blocked, privacy inventory loading, export preparing/ready/failed, deletion preview/awaiting-confirmation/running/partial/completed/failed, unresolved processor, retention restricted, Integration Manifest draft, review blocked, plugin disabled, Action blocked by plugin, reasoning unavailable, raw trace visible, context profile preparing, context fallback active, context rebuild failed, applying, partial failure, applied, cancelled, archived, and undo available.
 - Token/component ownership: the framework owns semantic token names and slot contracts; host applications override values or renderers without forking runtime state.
 
@@ -130,7 +130,7 @@ The Host defines the maximum permitted level. `raw_trace` is disabled by default
 
 ### Conversation and context configuration
 
-- `single` and `multiple` are Host-selected Conversation modes over the same data model and Runtime. In `single`, one Host-defined scope has one active Conversation; in `multiple`, users may create and manage several Conversations in that scope.
+- `single` and `multiple` share one data model and Runtime. In `single`, one Host scope has one active Conversation. In `multiple`, the Host owns listing, creation, selection, naming, archival, and deletion UI and passes the active `conversation_id` to the framework; the default assistant UI renders only that active Conversation.
 - `lite` is the core context profile and uses authoritative Host facts, current input, current Action state, and a bounded recent raw window.
 - `balanced` adds a Working Ledger, summaries, relevant history retrieval, and a Context Manifest.
 - `durable` adds immutable internal Context Segments, correction and supersession tracking, hybrid raw retrieval, complete provenance, invalidation, and rebuild. It is the recommended profile for long-lived single-Conversation assistants.
@@ -148,7 +148,7 @@ Profile controls belong to Host or maintainer settings, not the ordinary chat co
 
 Integration authoring and generated-risk review are developer/maintainer surfaces, not end-user chat controls. Generated writes remain visibly blocked until permission, privacy, validation, idempotency, transaction, confirmation, cascading-delete, and undo questions are resolved.
 
-If a contributing plugin is disabled, each non-terminal Action that has not begun applying remains readable and changes to `blocked_plugin_disabled`. Confirm and edit controls are disabled; the card explains compatible re-enable, manual cancellation, and archival. Re-enabling never resumes execution automatically—it reruns compatibility, permission, payload, and schema validation before returning the Action to policy evaluation. Applied history remains readable through a generic renderer.
+If a contributing plugin is disabled, each non-terminal Action that has not begun applying remains readable and changes to `blocked_plugin_disabled`. Confirm and edit controls are disabled; the card explains compatible re-enable, manual cancellation, and archival. Re-enabling never resumes execution automatically—it reruns compatibility, permission, payload, and schema validation before returning the Action to policy evaluation. Applied history remains readable through a generic renderer. Plugin data migration and automated upgrade/rollback orchestration are not part of v0.1.
 
 ### Action execution modes
 
@@ -171,13 +171,11 @@ Payments, transfers, and other `dangerous` capabilities remain unavailable in th
 
 ### Privacy Center
 
-- Present user-understandable categories for Conversations/Messages, attachments, voice-message audio, transcript revisions, Memory, retained raw traces, context artifacts, Pending Actions, integration/plugin data, and restricted Host/audit records.
-- Each category shows owner, scope, item count or size where available, retention policy, export support, deletion support, and downstream effects. Internal indexes and caches appear as derived consequences rather than confusing standalone user data.
-- Export uses private authenticated delivery and includes a manifest of included categories, schema versions, omissions, and retention restrictions.
-- Deletion starts with an impact preview, then destructive confirmation. The progress surface shows per-category and per-processor status and never collapses partial completion into success.
-- Removing source content removes or invalidates dependent transcripts, summaries, Working Ledger entries, retrieval indexes, Context Manifests, caches, and extension data. Host-owned committed records link to Host controls instead of being silently deleted.
-- Required audit or legal retention is explicit: show retained fields, reason, owner, and expiry. A minimal tombstone must not expose deleted content.
-- Plugin disablement or removal cannot strand data-management controls. Stable Host or migration handlers keep export/deletion available until the declared retention period ends.
+- `PrivacyCenter` is one inventory surface. It shows only registered categories, grouped by owner, with scope, size/count, retention, export/delete availability, and downstream effects.
+- Export or deletion starts from the inventory and opens one job flow.
+- `PrivacyJobStatus` is the single job-detail surface for deletion preview/confirmation, export/deletion progress, per-processor results, partial completion, retry, and retained restrictions.
+- Source deletion removes or invalidates registered derivatives. Host-owned records link to Host controls; required audit/legal retention discloses fields, reason, owner, and expiry.
+- Plugin disablement or removal cannot strand data controls. A stable Host handler remains available until the plugin-owned data reaches its declared retention end; v0.1 does not orchestrate plugin data migration.
 
 ## Accessibility
 
@@ -213,7 +211,7 @@ Payments, transfers, and other `dangerous` capabilities remain unavailable in th
 - Framework/styling system: MVP reference client uses Vue 3, TypeScript, and a headless store; the reference backend uses Python/FastAPI. JSON Schema and the event protocol are the cross-language source of truth.
 - Design-token constraints: semantic CSS variables and typed slot props; no application-specific palette in framework packages.
 - Performance constraints: paginated or virtualized history, bounded Attachment Tray and grid rendering, thumbnails only in Message lists, preview/original loading on demand, sequential or bounded-concurrency image decoding/optimization, stream backpressure, profile-driven token budgeting, one Context Compiler contract, and Context Manifest diagnostics.
-- Compatibility constraints: authenticated private-data Hosts, reviewed Host Data Tool entity/operation/field/scope/concurrency manifests, Host-owned transactional data adapters, reviewed versioned execution policies and allowlists, registered Privacy Resources and export/delete/invalidation handlers, generic adapters backed by approved configuration, review-gated generated integrations, resumable event streams, Host-controlled media URLs, batch/streaming and device/server ASR adapters, explicit fallback disclosure, mobile Safari attachment behavior, and optional custom plugins installed at release time but enabled or disabled at runtime.
+- Compatibility constraints: authenticated private-data Hosts, reviewed Host Data Tool entity/operation/field/scope/concurrency manifests, Host-owned transactional data adapters, reviewed versioned execution policies and allowlists, registered Privacy Resources and export/delete/invalidation handlers, generic adapters backed by approved configuration, review-gated generated integrations, resumable event streams, Host-controlled media URLs, batch/streaming and device/server ASR adapters, explicit fallback disclosure, mobile Safari attachment behavior, Host-owned multi-Conversation navigation, and optional custom plugins installed at release time but enabled or disabled at runtime.
 - Test/screenshot expectations: contract fixtures, reducer tests, Host Data Tools default-off/visibility/entity-operation-field-row scope/optimistic conflict/raw-SQL prohibition, `read_only`/`confirm_each`/`auto_apply_allowlist`, policy evaluation/fallback/forced confirmation/auto result/undo, Attachment Tray placement/append/limit/reorder, per-item state and retry, one-Message grouping, grid/file card/Lightbox/unavailable tombstones, history replay, required/optional processing gates, Action provenance/Promotion, Privacy invalidation, five-minute message-time grouping and pagination recomputation, both voice modes and ASR execution locations, audio retention/privacy, transcription failure/correction, all four Host integration levels, generated-risk review, `blocked_plugin_disabled` Actions, generic historical renderer fallback, single/multiple Conversation modes, `lite`/`balanced`/`durable` context profiles, profile preparation/fallback/failure states, all six reasoning disclosure levels, trace-unavailable and authorization states, component interaction and accessibility tests, mobile/desktop visual smoke checks, disconnect recovery, permission denial, and Action idempotency.
 
 ## Open questions

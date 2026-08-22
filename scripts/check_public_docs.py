@@ -151,6 +151,19 @@ REQUIRED_SPEC_TERMS = (
     "getDataToolCapabilities",
     "absent from model manifests by default",
     "arbitrary SQL",
+    "Wave 0 — Contract foundation",
+    "Wave 1 — Platform kernel",
+    "Wave 2 — Experience and capability packages",
+    "Wave 3 — Reference integration and cross-module proof",
+    "A Wave advances only when its Exit Gate passes",
+    "Domain-specific schemas and exceptions remain in Host Integration Manifests or optional Domain Plugins",
+    "C0. Protocol and schema conformance",
+    "C9. End-to-end and portability conformance",
+    "C7a. Safety and Privacy baseline",
+    "C7b. Action Workspace integration",
+    "Multiple Conversation continuity",
+    "Reasoning disclosure lifecycle",
+    "Version migration and rollback",
     "release time",
     "runtime",
     "MUST NOT delete or rewrite original messages",
@@ -194,6 +207,8 @@ ACTION_EXECUTION_MODES = (
     "confirm_each",
     "auto_apply_allowlist",
 )
+
+CONFORMANCE_SUITE_IDS = tuple(str(index) for index in range(10))
 
 MARKDOWN_LINK = re.compile(r"\[[^\]]+\]\(([^)]+)\)")
 
@@ -348,6 +363,15 @@ def main() -> int:
         failures.append(
             "docs/mvp-spec.md: Action execution modes must contain exactly read_only, "
             f"confirm_each, and auto_apply_allowlist in order (found {execution_modes})"
+        )
+
+    conformance_ids = tuple(
+        re.findall(r"^### C(\d+)\.", spec, flags=re.MULTILINE)
+    )
+    if conformance_ids != CONFORMANCE_SUITE_IDS:
+        failures.append(
+            "docs/mvp-spec.md: conformance suites must appear exactly once and in order from "
+            f"C0 to C9 (found {conformance_ids})"
         )
 
     if failures:

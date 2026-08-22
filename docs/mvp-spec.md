@@ -952,46 +952,158 @@ Privacy Jobs are scoped to the authenticated actor and Host scope, require destr
 
 ## Parallel implementation plan
 
-| Wave | Parallel work | Exit gate |
+### Wave 0 — Contract foundation
+
+Parallel work is limited to M0, repository/package skeleton, code generation, CI, and fixture infrastructure.
+
+M0 freezes the minimum `0.1` contracts for Conversation/Run/Message and ordering/time, events/errors, Attachment/processing/voice, Tool and Host Data Tool catalog, Host Adapter, Integration/Plugin manifests, Action/Policy Decision/execution modes, Context/Profile/Manifest, Memory, Citation, Privacy Resource/Job, permissions, audit, and versioning. It also publishes generated TypeScript/Python types, OpenAPI/event documentation, valid/invalid golden fixtures, a replay server, schema validators, and compatibility-change policy.
+
+**Exit gate:** C0 protocol/schema conformance passes; every downstream lane can compile and run against generated types plus fakes; breaking fields or state transitions require compatibility review.
+
+### Wave 1 — Platform kernel
+
+The following lanes run in parallel against M0:
+
+| Lane | Modules | Deliverables |
 | --- | --- | --- |
-| 0 | M0, repository skeleton, CI | schema `0.1`, fixtures, and compatibility policy frozen |
-| 1 | M1, M2, M3, M4, M5, M12, M13 | each module passes M0 conformance independently |
-| 2 | M6, M7, M8, M9, M10, M11 | module acceptance passes using public APIs or fakes |
-| 3 | M14 and cross-module recovery, permission, and idempotency tests | one representative host and three example domains pass |
-| Release | documentation, migration notes, performance and security review | all MVP acceptance criteria pass |
+| Runtime | M1 | Conversation/Run lifecycle, persistence, provider adapters, ordered/resumable events, cancellation/reconciliation, usage |
+| Host boundary | M2 | Actor/scope/page context, permission decisions, Host Data Tool catalog, transactional Action application, refresh |
+| Tool runtime | M3 | Registry, validation, visibility, Host Data Write Tool generator, timeout/retry, typed-Action routing |
+| Integration/plugin | M4 | Manifest validation, review gates, capability/renderer/privacy registration, enable/disable, migration preflight |
+| Headless state | M5 | Replay reducers for Conversation, Message, time, Attachment, Voice, Reasoning, Tool, Action, Privacy, Context |
+| Safety/governance | M12 | Permissions, execution policy, forced confirmation, redaction, audit, quotas, Privacy registry/jobs |
+| Developer tooling | M13 | Mock model/Host/processors, fixtures, inspectors, Integration Generator, Data Tool simulator, replay/failure injection |
 
-Parallel work rules:
+**Exit gate:** C1–C4 and C7a pass independently; M13 Mock/replay/schema-drift tooling passes its Wave 1 C8 subset without live provider credentials or a real Host. Every lane publishes public fakes/fixtures and imports no other lane’s storage or UI internals.
 
-- M0 changes require compatibility review.
-- Every module publishes a fake, fixture, or stub.
-- Modules depend on public contracts, not another module’s storage or UI internals.
-- Domain exceptions remain in plugins rather than entering core schemas.
+### Wave 2 — Experience and capability packages
+
+The following lanes run in parallel on Wave 1 public contracts or fakes:
+
+| Lane | Modules | Deliverables |
+| --- | --- | --- |
+| Default experience | M6 | Shell/Thread/Composer, message time, Attachment UI/Lightbox, Voice UI, Reasoning, Tool/Citation, Action modes, Privacy Center, accessibility/responsive states |
+| Multimodal | M7 | Attachment Asset lifecycle, private variants, processors, Run gates, Promotion, voice_message/live_dictation adapters |
+| Context | M8 | `lite`/`balanced`/`durable`, segmentation, ledger, summaries, retrieval, invalidation, rebuild, Context Manifest |
+| Knowledge | M9 | Search/URL/document/Host knowledge adapters, citations, freshness/trust, external permission and budgets |
+| Memory | M10 | Explicit scoped Memory CRUD/export/provenance/authorization |
+| Action workspace | M11 | `read_only`/`confirm_each`/`auto_apply_allowlist`, policy decisions, confirmed/automatic application, conflict, partial result, undo, plugin blocking |
+
+**Exit gate:** C5, C6, C7b, and full C8 pass using mocks; component accessibility and mobile/desktop visual fixtures pass; no capability requires a live model, external search provider, database, or production user to prove its state contract.
+
+### Wave 3 — Reference integration and cross-module proof
+
+M14 integrates one representative real Host plus domain-neutral wellness, itinerary, and household-finance fixtures. Collectively they prove all four Host integration levels, single/multiple Conversation modes, all three Context Profiles, both voice modes, Attachment processing/Promotion, Host Data Write Tools default-off and scoped enablement, confirmed/automatic Action paths, Reasoning Disclosure, retrieval citations, Memory, plugin disablement, Privacy export/deletion, interruption recovery, idempotency, and domain portability.
+
+**Exit gate:** C9 end-to-end/portability suite passes; at least one real Host removes a duplicated assistant path and uses framework public modules rather than a parallel demo.
+
+### Release gate
+
+Release requires every MVP acceptance criterion plus protocol/migration compatibility, dependency/license, performance, security/Host Data Tool, privacy/data-lifecycle, accessibility, responsive/visual, recovery/observability, and public-documentation reviews. Release evidence records versions, fixtures, test reports, known gaps, and rollback instructions.
+
+### Parallel work rules
+
+- M0 changes require compatibility review and regenerated fixtures/types before downstream adoption.
+- Every module publishes a fake, fixture, stub, or simulator that matches the public contract.
+- Modules depend on public contracts, not another module’s database, cache, framework-specific component state, or private helper.
+- Domain-specific schemas and exceptions remain in Host Integration Manifests or optional Domain Plugins, never in Core contracts.
+- Cross-cutting Safety/Privacy/Accessibility requirements are verified inside each owning lane and again in cross-module suites; they are not deferred to release week.
+- A Wave advances only when its Exit Gate passes. Calendar completion or merged code does not substitute for evidence.
 
 ## Conformance
 
-### Required test suites
+Conformance is evidence-based and modular. Passing one module suite permits a claim for that module only; claiming Framed Assistant MVP conformance requires C0–C9 plus all MVP acceptance criteria. Every report identifies package/protocol/schema versions, fixture revision, configuration/profile, passed/failed/skipped cases, known gaps, and reproducible artifacts.
 
-- schema validation with valid and invalid fixtures;
-- event replay with duplicates, sequence gaps, interruption, and reconciliation;
-- conversation-mode tests for single and multiple topology over the same Runtime and storage contracts;
-- context-profile tests for `lite`, `balanced`, and `durable`, including profile switching and atomic activation;
-- runtime lifecycle and provider error mapping;
-- Host Adapter allow, deny, timeout, conflict, and refresh behavior;
-- integration-level tests for direct embed, declarative Manifest, generated Manifest review, and custom Domain Plugin paths;
-- Integration Generator tests for read-only scaffolding, write-proposal and auto-apply eligibility review gates, unresolved-risk reporting, and zero activation before review;
-- tool schema, permission, timeout, cancellation, and safe retry behavior; Host Data Write Tool default-off visibility, reviewed entity/operation/field/row scope, optimistic concurrency, raw-SQL prohibition, and typed-Action routing;
-- integration/plugin compatibility, disablement, migration preflight, renderer failure, and `blocked_plugin_disabled` Pending Actions;
-- Headless reducers for every event type;
-- UI component, accessibility, responsive, and recovery tests;
-- message chronology tests for sequence ordering, five-minute grouping, cross-date labels, timezone formatting, pagination recomputation, and in-place Action updates;
-- disclosure tests for all six levels, provider capability mismatch, authorization denial, and raw-trace persistence defaults;
-- Attachment Asset/Draft/Message-Part schemas, stable ID/private variant URLs, Tray placement, append/limit/reorder, per-item validation/optimization/upload/processing states, image grid/Lightbox, file-card capability, required/optional Run gates, history replay, Action provenance/Promotion, privacy invalidation, image, file, voice-message, live-dictation, ASR capability, transcript revision, and fallback-disclosure tests;
-- context segmentation, summary trigger, correction/supersession, compaction race, invalidation, permission filtering, provenance, Manifest, and rebuild tests;
-- retrieval citations and external-data permission tests;
-- Memory scope and deletion tests;
-- Action execution-mode, policy-evaluation, forced-confirmation, allowlist denial, fallback-to-confirmation, auto-application, reauthorization, bounds, idempotency, result visibility, partial failure, and undo tests;
-- Privacy Resource registration, scoped inventory, export manifest, deletion preview/confirmation, derived-artifact cascade, partial/retry, plugin removal, Host-owned record handoff, external-processor confirmation, and retention-disclosure tests;
-- redaction, quota, audit, replay, and failure-simulation tests.
+### C0. Protocol and schema conformance
+
+- validate every public schema with valid, boundary, unknown-optional-field, and invalid fixtures;
+- generate TypeScript/Python/OpenAPI artifacts reproducibly and detect drift from canonical JSON Schemas;
+- replay every event type and content part, including unknown events, duplicate IDs, sequence gaps, version mismatch, and generic-renderer fallback;
+- verify stored-object schema versions and deterministic forward/rollback or compensating migrations;
+- verify Attachment, Voice, Reasoning, Action Policy, Host Data Tool, Context, Memory, Privacy, Integration, Plugin, Error, and Audit contracts before Wave 0 exit.
+
+### C1. Runtime and provider conformance
+
+- persist user input before provider invocation and prove empty/premature streams cannot complete successfully;
+- cover Run lifecycle, cancellation, stop/regenerate, timeout, provider error mapping, usage, interruption, resume by `after_seq`, and reconciliation;
+- verify non-idempotent work is never replayed automatically and provider reasoning capability is reported accurately;
+- run OpenAI-compatible and Mock adapters against the same scripted text/tool/reasoning/error fixtures;
+- verify Conversation `single`/`multiple` topology uses the same Runtime and storage contracts.
+
+### C2. Host boundary, Tool, and Host Data Tool conformance
+
+- exercise Host Adapter allow/deny/timeout/conflict/refresh and actor/tenant/Conversation-scope isolation;
+- validate Tool input/output, permission, visibility, cancellation, timeout, safe retry, redaction, and audit behavior;
+- prove Host Data Write Tools are absent by default and enabling one entity/operation exposes only reviewed fields, validation, row scope, concurrency, limits, and execution mode;
+- verify create, update, upsert, delete, link, and unlink independently remain default-off and retain their operation-specific scope, concurrency, forced-confirmation, and compensation requirements when enabled;
+- reject raw SQL, schema/table browsing, credentials, unrestricted predicates, undeclared fields, and out-of-scope rows;
+- route every write call through a typed Action and parameterized Host transaction; stale versions produce conflict without last-write-wins mutation.
+
+### C3. Host Integration and Plugin conformance
+
+- cover direct embed, declarative Manifest, generated Manifest review, and custom Domain Plugin paths;
+- verify Integration Generator read scaffolding, write-proposal and auto-apply eligibility review gates, unresolved-risk reporting, and zero activation before review;
+- validate protocol/schema ranges, dependencies, configuration, capability/permission declarations, Privacy Resources, migrations, renderer registration, and fail-closed activation;
+- disable integrations/plugins without leaving callable tools or orphaning export/delete handlers; historical rendering remains available through generic fallback;
+- verify `blocked_plugin_disabled` Actions, compatible re-enable revalidation, permanent removal cancellation/archival, and applied-history readability.
+
+### C4. Headless state conformance
+
+- replay every event into serializable reducers for Conversation, Message/time, Attachment, Voice, Reasoning, Tool/Citation, Action/Policy, Context, and Privacy;
+- cover duplicates, out-of-order/gap detection, optimistic/local IDs, persisted reconciliation, cache restore, and unknown states;
+- preserve draft text/attachments, reading anchors, bottom-follow ownership, item order, retry state, and per-Message grouping through failure and pagination;
+- verify state has no visual-framework or Host-business dependency and can run entirely against C0 fixtures.
+
+### C5. Default UI and Multimodal conformance
+
+- expose independently runnable fixture groups for Shell/Thread/Composer, chronology, Attachment, Voice, Reasoning/Tool/Citation, Action modes, Privacy Center, accessibility, responsive, and recovery behavior rather than one monolithic visual suite;
+- component, keyboard, focus, screen-reader, reduced-motion, contrast, 320/360 px, desktop, safe-area, and visual-regression fixtures;
+- five-minute message-time grouping, cross-date/timezone labels, pagination recomputation, exact-time detail, and in-place status updates;
+- Attachment Asset/Draft/Message-Part lifecycle, Tray placement/append/limit/reorder, per-item states/retry, one-Message grouping, grids, file cards, Lightbox, tombstones, private variants, Run gates, provenance, Promotion, and privacy invalidation;
+- voice-message and live-dictation modes across batch/streaming and device/server ASR, transcript revision, privacy, failure, and fallback disclosure;
+- six Reasoning Disclosure levels, Tool/Citation UI, confirmed/automatic/blocked Action cards, Host Data Tool settings, Privacy Center, and recovery states.
+
+### C6. Context, Retrieval, and Memory conformance
+
+- `lite`/`balanced`/`durable` compilation, profile switching, atomic activation, Token budgets, Context Manifest, and raw-history preservation;
+- complete-turn segmentation, summary trigger, correction/supersession, async compaction race, compare-and-swap, invalidation, permission filtering, provenance, fallback, and rebuild;
+- hybrid historical retrieval, source-span recall, citations, freshness/trust, external-data permission/redaction, empty results, timeout, and call budgets;
+- Memory create/view/edit/delete/export, conversation/app/user scopes, provenance, authorization, and exclusion of guesses/cancelled Actions;
+- ensure Attachment deletion, permission revocation, Memory deletion, Action changes, and retained raw-trace policy correctly affect derived context.
+
+### C7. Action, Safety, and Privacy conformance
+
+#### C7a. Safety and Privacy baseline — Wave 1
+
+- enforce permission/scope decisions, redaction, quotas, maximum tool calls, audit, and sensitive raw-trace/attachment handling without M11;
+- prove execution policy is deny-by-default, cannot be model-selected or self-expanded, and routes every side-effect proposal toward confirmation or a reviewed allowlist decision;
+- test every forced-confirmation category as an independent case: delete, payment/transfer, external communication, private sharing, account/permission change, bulk/irreversible mutation, Attachment Promotion, Privacy deletion, ambiguity, low-confidence OCR/ASR, and missing compensation;
+- register Privacy Resources and validate scoped inventory, private export envelope, deletion preview/confirmation contract, Host-owned handoff metadata, retention disclosure, and unresolved-processor truthfulness using fake jobs;
+- publish M12 policy, audit, Privacy, and failure-injection fakes required by Wave 2.
+
+#### C7b. Action Workspace integration — Wave 2
+
+- cover `read_only`, default `confirm_each`, and `auto_apply_allowlist` state paths, immutable policy evidence, allowlist denial, fallback, reauthorization, bounds, target version, idempotency, transaction, result visibility, partial failure, retry, and undo;
+- integrate full Privacy Jobs: derived cascade, partial/retry, plugin removal, external-processor confirmation, audit tombstone, and UI-visible terminal outcomes;
+- inject permission, target-version, policy, plugin, and data changes between proposal, policy evaluation, confirmation/auto-apply, and Host commit;
+- verify confirmed and automatic Actions use the same Host transaction boundary and differ only in approved confirmation policy;
+- verify plugin disablement, `blocked_plugin_disabled`, compatible re-enable revalidation, permanent archival/cancellation, and in-flight final-result recording.
+
+### C8. Developer tooling and observability conformance
+
+- run Mock model/Host/processor/search/ASR/data-transaction services without external credentials;
+- validate stream, Context/Token, Tool, Permission, Data Tool, Privacy, Integration Generator, compatibility, and replay inspectors against golden fixtures;
+- simulate disconnect, malformed event, timeout, provider/tool/parser/renderer/plugin failure, permission denial, stale version, policy miss, partial deletion, and recovery;
+- produce sanitized replay bundles that preserve correlation, timing, policy, and provenance without secrets or private payloads;
+- fail CI when schemas, generated types, required fixtures, public docs, or conformance reports drift.
+
+### C9. End-to-end and portability conformance
+
+- run one representative real Host plus wellness, itinerary, and household-finance fixtures through the same public contracts;
+- prove Level 0–3 integration, single/multiple Conversation, all Context Profiles, both Voice modes, Attachment/Promotion, Retrieval/Memory, Host Data Write Tools, confirmed/automatic Actions, Reasoning, plugin disablement, and Privacy Center;
+- cover cold start, long history, offline/interruption recovery, permission change, optimistic conflict, duplicate request, partial result, deletion, migration, and rollback;
+- confirm no domain field enters Core schemas and at least one real Host replaces a duplicated assistant path rather than running a side demo;
+- capture release-ready performance, security, privacy, accessibility, visual, migration, and observability evidence.
 
 ### Cross-module scenarios
 
@@ -1007,6 +1119,8 @@ Parallel work rules:
 | Live dictation | M5, M6, M7, M12 | on-device or disclosed server streaming fills an editable draft, never auto-sends, and retains no audio Message |
 | Message time grouping | M0, M5, M6 | sequence order remains stable, continuous messages share one time anchor, five-minute/date boundaries create localized dividers, pagination recomputes without jump |
 | Long single Conversation | M1, M8, M13 | selected profile compiles a bounded Context View, original history remains unchanged, Manifest explains inclusion and exclusion |
+| Multiple Conversation continuity | M1, M5, M8, M10, M12 | switching Conversations isolates local context; authorized cross-conversation Memory and on-demand history retrieval return provenance without leaking other scopes |
+| Reasoning disclosure lifecycle | M0, M1, M5, M6, M12 | provider none/summary/trace capability, Host/viewer level, raw_trace unavailable or visible state, Privacy export/delete, and Context/Memory exclusion stay consistent |
 | Read-only execution mode | M2, M3, M11, M12 | write proposal is rejected or converted to non-executable guidance; no Host mutation occurs |
 | Disabled Host Data Write Tools | M2, M3, M4, M12 | model manifest contains no database write capability and no Host mutation path is reachable |
 | Enabled schema-bound create/update | M2, M3, M4, M11, M12 | only reviewed entity/operation/fields/scope are visible, call becomes typed Action, Host transaction applies under execution policy |
@@ -1014,12 +1128,13 @@ Parallel work rules:
 | Confirmed write | M0, M2, M11, M12 | proposal, confirmation, host application, idempotency, audit |
 | Allowlisted automatic write | M0, M2, M4, M11, M12 | approved low-risk Action records policy evidence, revalidates, applies idempotently, shows result, and exposes undo when declared |
 | Auto-apply policy miss | M2, M4, M11, M12 | ambiguous, over-limit, low-confidence, unauthorized, or non-allowlisted Action falls back to confirmation or blocked without optimistic mutation |
-| Disabled plugin | M3, M4, M6 | no callable tool, safe renderer behavior, actionable diagnostic |
+| Disabled plugin | M3, M4, M6, M12 | no callable tool, fail-closed permission state, safe renderer behavior, actionable diagnostic |
 | Disabled plugin with Pending Action | M4, M11, M12 | Action becomes `blocked_plugin_disabled`, never auto-cancels or executes, and requires revalidation after compatible re-enable |
 | Config-only application | M0, M2, M3, M4, M13 | approved Manifest supplies a read tool plus confirmed or allowlisted automatic Action without custom plugin code |
 | External retrieval | M6, M9, M12 | citation, freshness, permission, and budget enforcement |
 | Deleted Memory | M8, M10, M13 | record no longer enters context; audit remains |
 | Unified privacy deletion | M0, M4, M6, M8, M10, M12, M13 | source data and registered derivatives are removed or invalidated, Host-owned records are handed off, partial processors remain visible and retryable |
+| Version migration and rollback | M0, M1, M4, M8, M11, M12, M13 | protocol/plugin/Manifest/stored Action/Context/PrivacyJob fixtures migrate deterministically, remain readable, and recover through rollback or compensating migration |
 | Domain portability | M0, M4, M11, M14 | three examples introduce no domain fields into core |
 
 ## MVP acceptance criteria

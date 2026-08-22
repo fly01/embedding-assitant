@@ -33,7 +33,7 @@ The MVP MUST:
 1. Let a host application embed a text assistant with minimal integration code.
 2. Provide one event protocol, state model, error model, permission model, and audit model across applications.
 3. Provide both a polished default interface and an unstyled Headless interaction layer.
-4. Support progressive adoption of image, two-mode voice input, file, tool, retrieval, memory, and confirmed-action capabilities.
+4. Support progressive adoption of image, two-mode voice input, file, tool, retrieval, memory, and policy-controlled Action execution.
 5. Let hosts add domain tools, context providers, actions, and renderers through a declarative Integration Manifest, a generated integration, or an optional custom plugin without modifying the core runtime.
 6. Keep business data access and final writes under host-application control.
 7. Preserve original conversation records when optional context summarization is enabled.
@@ -69,7 +69,9 @@ The MVP does not include:
 | Conversation | An ordered, persistent set of messages within one host-defined scope. |
 | Run | One execution initiated by a user message, including model output, tool calls, events, and completion state. |
 | Tool | A typed capability callable by the runtime. A tool cannot directly exceed its declared permissions or side-effect class. |
-| Action | A typed proposal for a host-side business change. An action is not committed until the user confirms it and the host applies it. |
+| Action | Typed representation of a Host-side business change. It is applied only after Host execution policy selects user confirmation or a pre-approved auto-apply path. |
+| Execution mode | Host and scope policy selecting `read_only`, `confirm_each`, or `auto_apply_allowlist` behavior for business Actions. |
+| Auto-apply policy | Reviewed allowlist and bounded risk rules that permit eligible Actions to skip per-operation user confirmation while retaining validation, transaction, idempotency, audit, and result visibility. |
 | Capability package | An officially maintained, versioned package that applications explicitly enable, except for the required safety baseline. |
 | Host Integration Manifest | Declarative application configuration for context sources, tools, Actions, permissions, generic renderers, and adapter mappings. |
 | Integration Generator | Development/build-time tool that analyzes public application contracts and produces a reviewable Host Integration Manifest plus scaffolding. |
@@ -120,8 +122,9 @@ Host Adapter ── Framed Assistant protocol ── Headless SDK ── Default
 - The framework MUST NOT query a host database directly.
 - An integration or plugin MUST NOT receive undeclared data access.
 - A model MUST NOT commit a business write.
-- The host MUST authorize every protected read, external request, and proposed write.
-- The host MUST validate permissions and action payloads again at confirmation time.
+- Every business change MUST become a typed Action before execution policy is evaluated.
+- The Host MUST authorize every protected read, external request, and proposed write.
+- The Host MUST validate permissions and Action payloads again immediately before either confirmed or automatic application.
 - The host MUST execute committed writes transactionally or return a structured failure.
 
 ### Progressive adoption
@@ -133,7 +136,7 @@ A host MAY adopt the framework in stages:
 3. image, voice, and file input;
 4. configurable reasoning disclosure and visible tool activity;
 5. Context Management or Knowledge & Retrieval;
-6. Action Workspace and declarative, generated, or custom domain integration;
+6. Action Workspace, execution mode, and declarative, generated, or custom domain integration;
 7. explicit Memory where appropriate.
 
 Every stage MUST remain independently deployable.
@@ -175,7 +178,24 @@ Every host provides a minimal Host Adapter boundary, but a custom Domain Plugin 
 
 The minimal Host Adapter always owns actor identity, Conversation scope, authentication, authorization, final Action application, and data refresh. Generic SDK adapters MAY implement this boundary from approved configuration.
 
-The Integration Generator runs only during development or build workflows. It MAY propose read tools and write-proposal Actions, but it MUST NOT activate write operations automatically. Unresolved permissions, idempotency, transaction, cascading-delete, privacy, confirmation, or undo semantics fail closed and require human review.
+The Integration Generator runs only during development or build workflows. It MAY propose read tools and write-proposal Actions, but it MUST NOT activate write operations automatically before human review. Unresolved permissions, idempotency, transaction, cascading-delete, privacy, confirmation, or undo semantics fail closed and require human review.
+
+### Action execution modes
+
+```yaml
+assistant:
+  execution_mode: read_only | confirm_each | auto_apply_allowlist
+```
+
+- `read_only`: protected reads may run under policy; business writes are not proposed or applied.
+- `confirm_each`: every eligible business Action enters `awaiting_confirmation`. This is the framework default.
+- `auto_apply_allowlist`: reviewed low-risk Action types may skip per-operation user confirmation and proceed through policy evaluation to Host application.
+
+Automatic application never means direct model database access. The Action remains typed, versioned, authorized, schema-validated, idempotent, transactional, audited, visible in history, and subject to Privacy Center. Auto-apply policy is configured per Host, scope, actor, and Action type and includes impact/rate limits, confidence or ambiguity gates, and a compensation or undo declaration where applicable.
+
+An Action is auto-apply eligible only when its Integration Manifest or Plugin Manifest is approved, its type is explicitly allowlisted, the actor remains authorized, payload and current target version validate, risk and impact are within configured bounds, an idempotency key exists, and Host transaction semantics are known. A policy miss falls back to `awaiting_confirmation` or `blocked`; it does not execute optimistically.
+
+Delete, payment/transfer, external communication, private-data sharing, account or permission change, bulk mutation, irreversible operation, attachment Promotion, Privacy deletion, ambiguous target, low-confidence OCR/ASR, and any Action without an approved compensation policy require confirmation regardless of execution mode.
 
 ### Core entities
 
@@ -190,6 +210,7 @@ The Integration Generator runs only during development or build workflows. It MA
 | `AttachmentProcessingResult` | Derived parser/model output | attachment, processor/version, status, provenance, warnings |
 | `ToolInvocation` | Typed tool request and result | run, tool version, permission decision, audit reference |
 | `PendingAction` | Uncommitted host-side change proposal | schema version, payload, state, idempotency key |
+| `ActionPolicyDecision` | Immutable execution-policy result | mode, rule/version, risk, bounds, reason, confirmation or auto-apply outcome |
 | `ContextSegment` | Internal compaction and retrieval unit | complete turn groups, source range, closure reason |
 | `SummarySegment` | Rebuildable context summary | source message range, summary version, validity state |
 | `WorkingLedger` | Rebuildable current task state | goals, constraints, corrections, open threads, references |
@@ -245,6 +266,8 @@ interface AssistantEvent<TPayload = unknown> {
     | "tool.completed"
     | "tool.failed"
     | "action.proposed"
+    | "action.policy_evaluated"
+    | "action.auto_applying"
     | "action.updated"
     | "action.applied"
     | "action.failed"
@@ -434,10 +457,12 @@ interface ToolManifest {
   input_schema: object;
   output_schema: object;
   side_effect: "none" | "read" | "write-proposal" | "external-read" | "dangerous";
+  risk: "low" | "medium" | "high";
   permissions: string[];
   timeout_ms: number;
   retry: { max_attempts: number };
-  confirmation: "none" | "explicit" | "typed" | "host-only";
+  confirmation: "none" | "policy" | "explicit" | "typed" | "host-only";
+  auto_apply_eligible?: boolean;
   idempotency: "not-applicable" | "run-scoped" | "host-required";
   ui_renderer_key?: string;
   redaction: RedactionPolicy;
@@ -470,7 +495,7 @@ Custom Domain Plugins are optional and are installed at release time through the
 
 **Purpose:** provide an opinionated interface that is ready to ship and remains themeable.
 
-Required components include `AssistantShell`, `ConversationThread`, `MessageTimeDivider`, `UserMessage`, `AssistantMessage`, `StreamingMarkdown`, `ThinkingDisclosure`, `ToolActivity`, `Composer`, `AttachmentTray`, `AttachmentGrid`, `AttachmentFileCard`, `AttachmentProcessingStatus`, `AttachmentLightbox`, `VoiceMessageBubble`, `LiveDictationControl`, `TranscriptionStatus`, `ActionCard`, `CitationList`, `PrivacyCenter`, `PrivacyJobStatus`, `ErrorBanner`, `StopButton`, `RegenerateButton`, and plugin renderer slots.
+Required components include `AssistantShell`, `ConversationThread`, `MessageTimeDivider`, `UserMessage`, `AssistantMessage`, `StreamingMarkdown`, `ThinkingDisclosure`, `ToolActivity`, `Composer`, `AttachmentTray`, `AttachmentGrid`, `AttachmentFileCard`, `AttachmentProcessingStatus`, `AttachmentLightbox`, `VoiceMessageBubble`, `LiveDictationControl`, `TranscriptionStatus`, `ActionCard`, `AutoAppliedResultCard`, `ExecutionModeSettings`, `CitationList`, `PrivacyCenter`, `PrivacyJobStatus`, `ErrorBanner`, `StopButton`, `RegenerateButton`, and plugin renderer slots.
 
 **Acceptance:** panel, drawer, inline, and full-page modes work at mobile and desktop widths; keyboard and screen-reader paths cover every operation; the five-minute default time-grouping rule survives pagination without moving the reading anchor; Attachment Tray location, multi-selection, stable order, per-item retry, message grouping, gallery navigation, and unavailable-source states remain consistent across surfaces; both voice modes expose distinct states and privacy expectations; Privacy Center inventory, preview, export, deletion, partial failure, and retention-limit states are accessible; internal tool identifiers remain hidden below developer level; all six disclosure levels render distinctly; `raw_trace` shows the full provider-supplied trace when available and an explicit unavailable state otherwise.
 
@@ -606,29 +631,33 @@ Asynchronous compaction MUST use source revisions and compare-and-swap activatio
 
 ### M11. Action Workspace Pack
 
-**Purpose:** standardize user-reviewed business changes while preserving host authority.
+**Purpose:** standardize read-only, user-confirmed, and pre-approved automatic business changes while preserving Host authority.
 
 ```text
-proposed -> editing <-> awaiting_confirmation -> applying -> applied
+proposed -> policy_evaluating
+policy_evaluating -> blocked | awaiting_confirmation | auto_applying
+awaiting_confirmation <-> editing
+awaiting_confirmation -> applying -> applied
+auto_applying -> applied
 editing -> cancelled
 awaiting_confirmation -> cancelled | expired | blocked_plugin_disabled
-applying -> failed -> retrying
+applying | auto_applying -> failed -> retrying
 applied -> undoing -> undone | undo_failed
-blocked_plugin_disabled -> awaiting_confirmation  (compatible re-enable + revalidation)
+blocked_plugin_disabled -> policy_evaluating      (compatible re-enable + revalidation)
 blocked_plugin_disabled -> cancelled | archived   (manual resolution)
 ```
 
-**Responsibilities:** typed proposals, schema-driven editing, Attachment source provenance and Promotion preview, confirmation, cancellation, plugin-disable blocking, conflict handling, idempotent application, partial results, retry, archival, and optional undo.
+**Responsibilities:** typed proposals, execution-mode and allowlist policy evaluation, immutable policy decisions, schema-driven editing, Attachment source provenance and Promotion preview, confirmation, bounded automatic application, cancellation, plugin-disable blocking, conflict handling, idempotent application, result visibility, partial results, retry, archival, and optional undo.
 
-**Acceptance:** the model can propose but cannot apply; confirmation rechecks authorization and validation; duplicate confirmation cannot duplicate a business write; undo is available only when the Host Adapter declares a compensating operation. An Action derived from attachments preserves stable `source_attachment_refs`, page/region or processor provenance where applicable, and separately lists any `promoted_attachment_refs` before confirmation. Disabling a contributing plugin moves every not-yet-applying Pending Action to `blocked_plugin_disabled` without cancelling or executing it. Compatible re-enable requires revalidation before returning to `awaiting_confirmation`; permanent removal allows manual cancellation or archival. Applied history remains readable, and an Action already in `applying` records its eventual Host result rather than being silently interrupted.
+**Acceptance:** the model can propose but cannot bypass execution policy or apply directly; `read_only` rejects write proposals, `confirm_each` always reaches `awaiting_confirmation`, and `auto_apply_allowlist` reaches `auto_applying` only after a positive reviewed policy decision. Both confirmed and automatic application recheck authorization, target version, bounds, and validation immediately before an idempotent Host transaction. Policy misses fall back to confirmation or blocked state. Auto-applied result cards remain visible and expose edit/undo only when supported. An Action derived from attachments preserves stable `source_attachment_refs`, page/region or processor provenance where applicable, and separately lists any `promoted_attachment_refs` before mandatory confirmation. Disabling a contributing plugin moves every not-yet-applying Pending Action to `blocked_plugin_disabled` without cancelling or executing it. Compatible re-enable requires revalidation before returning to policy evaluation; permanent removal allows manual cancellation or archival. Applied history remains readable, and an Action already in `applying` or `auto_applying` records its eventual Host result rather than being silently interrupted.
 
 ### M12. Safety & Governance
 
 **Purpose:** enforce the minimum security and observability baseline.
 
-**Responsibilities:** permission classes, data scopes, sensitive-data redaction, cost and rate limits, timeouts, maximum tool calls, audit events, integration/plugin permission checks, Privacy Resource registry, export orchestration, deletion preview and confirmation, derived-artifact invalidation, retention visibility, and Privacy Job recovery.
+**Responsibilities:** permission classes, data scopes, execution modes, auto-apply allowlists, risk/confidence/impact/rate limits, forced-confirmation categories, sensitive-data redaction, timeouts, maximum tool calls, audit events, integration/plugin permission checks, Privacy Resource registry, export orchestration, deletion preview and confirmation, derived-artifact invalidation, retention visibility, and Privacy Job recovery.
 
-**Acceptance:** minimum permission enforcement, write blocking, redaction, Privacy Center, and audit contracts cannot be disabled; advanced quotas are configurable; every assistant-managed data category is registered or fails conformance; export and deletion jobs are scoped, idempotent, resumable, and report partial results; audit records preserve debugging metadata without storing credentials, raw private attachments, or unredacted context.
+**Acceptance:** minimum permission enforcement, typed Action routing, forced-confirmation boundaries, redaction, Privacy Center, and audit contracts cannot be disabled; `auto_apply_allowlist` cannot expand itself or override Manifest review; advanced quotas are configurable; every assistant-managed data category is registered or fails conformance; export and deletion jobs are scoped, idempotent, resumable, and report partial results; audit records preserve debugging metadata without storing credentials, raw private attachments, or unredacted context.
 
 ### M13. Developer Toolkit
 
@@ -657,7 +686,7 @@ The repository SHOULD include domain-neutral examples for wellness logging, itin
 | Context Management | disabled | `balanced` and `durable` profiles, segmentation, ledger, summaries, retrieval, invalidation, rebuild, and Context Manifest; core always provides `lite` |
 | Knowledge & Retrieval | disabled | web, URL, document, host knowledge, citations |
 | Memory | disabled | explicit scoped Memory with user controls |
-| Action Workspace | disabled | editable confirmed actions and idempotent host application |
+| Action Workspace | disabled | `read_only`, default `confirm_each`, and bounded `auto_apply_allowlist` execution with typed Actions, policy evidence, idempotent Host application, results, and optional undo |
 | Safety & Governance | minimum baseline required | permission enforcement, write blocking, redaction, Privacy Center inventory/export/deletion, derived-data invalidation, and audit; advanced limits are configurable |
 | Developer Toolkit | development only | Mock services, inspectors, replay, validation, evaluation, and failure simulation |
 
@@ -690,13 +719,18 @@ actions:
     source: openapi
     operation_id: createRecord
     permission: sample.records.write-proposal
-    confirmation: explicit
     renderer: schema-form
+    execution:
+      risk: low
+      default: confirm_each
+      auto_apply_eligible: true
+      idempotency: required
+      compensation: delete_created_record
 
 review_status: approved
 ```
 
-The Manifest contains approved mappings, not arbitrary executable business code. Read tools and generic schema renderers MAY activate after validation. Every write-proposal mapping requires explicit review of authorization, validation, idempotency, transaction, confirmation, privacy, and optional undo semantics.
+The Manifest contains approved mappings, not arbitrary executable business code. Read tools and generic schema renderers MAY activate after validation. Every write-proposal mapping requires explicit review of authorization, validation, idempotency, transaction, confirmation, privacy, and optional undo semantics. `auto_apply_eligible` is a separate reviewed declaration; it never follows automatically from discovering a POST, PATCH, or DELETE operation.
 
 ### Custom Plugin Manifest
 
@@ -769,6 +803,8 @@ Minimum behavior:
 - honor the configured disclosure level without inventing unavailable reasoning data;
 - show user-facing tool outcomes rather than internal function names;
 - make proposed actions editable before confirmation;
+- expose the active execution mode in settings and mark every Action result as confirmed, automatically applied, blocked, or read-only; an auto-applied result remains visible with policy reason and edit/undo only when supported;
+- downgrade an ineligible automatic Action to `awaiting_confirmation` or `blocked` with an explanation rather than treating it as an execution error;
 - render `blocked_plugin_disabled` Actions as readable but non-confirmable, with compatible re-enable, manual cancel, and archival guidance;
 - provide a unified Privacy Center with category inventory, retention owner, export, deletion preview, destructive confirmation, progress, partial-result, retry, and unresolved-processor states;
 - provide accessible error, retry, cancellation, and permission-denied states;
@@ -845,7 +881,9 @@ Privacy Jobs are scoped to the authenticated actor and Host scope, require destr
 - Attachment limits and processor capabilities MUST be disclosed before selection or send; no layer may silently truncate, drop, or reinterpret selected files.
 - Persisted Messages use stable Attachment IDs and private authorized variants; public asset URLs, `blob:` URLs, data URLs, and array indexes are not durable history references.
 - Attachment-derived facts and Action fields retain processor/version plus source Attachment/page/region provenance. Promotion into a Host business resource requires explicit Action confirmation.
-- Action confirmation MUST revalidate authorization and payload integrity.
+- Every Action execution mode MUST revalidate authorization, payload integrity, current target version, policy bounds, and idempotency immediately before Host application.
+- `auto_apply_allowlist` is deny-by-default and cannot be selected by the model. Only approved Manifest policy may allow a low-risk bounded Action type. Policy decisions record rule/version, actor/scope, risk, confidence, bounds, reason, and outcome.
+- Delete, payment/transfer, external communication, private-data sharing, account/permission change, bulk or irreversible mutation, Attachment Promotion, Privacy deletion, ambiguous target, low-confidence OCR/ASR, and Actions without approved compensation require confirmation regardless of execution mode.
 - Every committed Action MUST have an idempotency key and audit record.
 - Partial failure MUST identify successful, failed, and retryable items.
 - Live-dictation audio is ephemeral by default and is not retained as a Message. Voice-message audio is persisted as private user content under explicit Host retention and deletion policy.
@@ -862,7 +900,7 @@ Privacy Jobs are scoped to the authenticated actor and Host scope, require destr
 - Additive optional fields MAY be introduced in a compatible minor release.
 - Removing a field, changing its meaning, or changing required state transitions requires a new protocol major version.
 - Clients MUST tolerate unknown event types and optional fields.
-- Stored Actions, summaries, Host Integration Manifests, and plugin configuration MUST retain the schema version used to create them.
+- Stored Actions, Action Policy Decisions, summaries, Host Integration Manifests, execution policies, and plugin configuration MUST retain the schema version used to create them.
 - Migration code MUST be deterministic, testable, and reversible through release rollback or explicit compensating migration.
 
 ## Parallel implementation plan
@@ -893,7 +931,7 @@ Parallel work rules:
 - runtime lifecycle and provider error mapping;
 - Host Adapter allow, deny, timeout, conflict, and refresh behavior;
 - integration-level tests for direct embed, declarative Manifest, generated Manifest review, and custom Domain Plugin paths;
-- Integration Generator tests for read-only scaffolding, write-proposal review gates, unresolved-risk reporting, and zero runtime activation;
+- Integration Generator tests for read-only scaffolding, write-proposal and auto-apply eligibility review gates, unresolved-risk reporting, and zero activation before review;
 - tool schema, permission, timeout, cancellation, and safe retry behavior;
 - integration/plugin compatibility, disablement, migration preflight, renderer failure, and `blocked_plugin_disabled` Pending Actions;
 - Headless reducers for every event type;
@@ -904,7 +942,7 @@ Parallel work rules:
 - context segmentation, summary trigger, correction/supersession, compaction race, invalidation, permission filtering, provenance, Manifest, and rebuild tests;
 - retrieval citations and external-data permission tests;
 - Memory scope and deletion tests;
-- Action state, reauthorization, idempotency, partial failure, and undo tests;
+- Action execution-mode, policy-evaluation, forced-confirmation, allowlist denial, fallback-to-confirmation, auto-application, reauthorization, bounds, idempotency, result visibility, partial failure, and undo tests;
 - Privacy Resource registration, scoped inventory, export manifest, deletion preview/confirmation, derived-artifact cascade, partial/retry, plugin removal, Host-owned record handoff, external-processor confirmation, and retention-disclosure tests;
 - redaction, quota, audit, replay, and failure-simulation tests.
 
@@ -922,10 +960,13 @@ Parallel work rules:
 | Live dictation | M5, M6, M7, M12 | on-device or disclosed server streaming fills an editable draft, never auto-sends, and retains no audio Message |
 | Message time grouping | M0, M5, M6 | sequence order remains stable, continuous messages share one time anchor, five-minute/date boundaries create localized dividers, pagination recomputes without jump |
 | Long single Conversation | M1, M8, M13 | selected profile compiles a bounded Context View, original history remains unchanged, Manifest explains inclusion and exclusion |
+| Read-only execution mode | M2, M3, M11, M12 | write proposal is rejected or converted to non-executable guidance; no Host mutation occurs |
 | Confirmed write | M0, M2, M11, M12 | proposal, confirmation, host application, idempotency, audit |
+| Allowlisted automatic write | M0, M2, M4, M11, M12 | approved low-risk Action records policy evidence, revalidates, applies idempotently, shows result, and exposes undo when declared |
+| Auto-apply policy miss | M2, M4, M11, M12 | ambiguous, over-limit, low-confidence, unauthorized, or non-allowlisted Action falls back to confirmation or blocked without optimistic mutation |
 | Disabled plugin | M3, M4, M6 | no callable tool, safe renderer behavior, actionable diagnostic |
 | Disabled plugin with Pending Action | M4, M11, M12 | Action becomes `blocked_plugin_disabled`, never auto-cancels or executes, and requires revalidation after compatible re-enable |
-| Config-only application | M0, M2, M3, M4, M13 | approved Manifest supplies a read tool and confirmed Action without custom plugin code |
+| Config-only application | M0, M2, M3, M4, M13 | approved Manifest supplies a read tool plus confirmed or allowlisted automatic Action without custom plugin code |
 | External retrieval | M6, M9, M12 | citation, freshness, permission, and budget enforcement |
 | Deleted Memory | M8, M10, M13 | record no longer enters context; audit remains |
 | Unified privacy deletion | M0, M4, M6, M8, M10, M12, M13 | source data and registered derivatives are removed or invalidated, Host-owned records are handed off, partial processors remain visible and retryable |
@@ -940,10 +981,10 @@ The MVP is complete when:
 - [ ] A representative host embeds the default UI through a real Host Adapter.
 - [ ] Text, multi-image/file Attachment Tray, private upload/processing/retry, one-Message rendering, image Lightbox, file cards, explicit Attachment Promotion, persisted voice-message with backend transcript, and live editable dictation flows work.
 - [ ] Streaming Markdown, all six disclosure levels, tool activity, citations, and Action cards render through public contracts.
-- [ ] A `Level 1` Host Integration Manifest contributes a tool and a confirmed Action without custom plugin code.
+- [ ] A `Level 1` Host Integration Manifest contributes a tool plus confirmed and allowlisted automatic Actions without custom plugin code.
 - [ ] A `Level 2` generated Manifest reports unresolved risks and cannot activate writes before review.
 - [ ] A sample `Level 3` Domain Plugin contributes a custom renderer or business handler without modifying core.
-- [ ] Every side-effecting operation passes through Action Workspace and host confirmation.
+- [ ] Every side-effecting operation passes through Action Workspace and Host execution policy; `confirm_each` is the default, and only reviewed low-risk allowlisted Actions can use automatic application.
 - [ ] Context Management proves summary rebuild and unchanged original history.
 - [ ] The same Runtime supports `single` and `multiple` Conversation modes, and Context Management supports `lite`, `balanced`, and `durable` profiles through one compiler contract.
 - [ ] Stream interruption, upload failure, permission denial, provider failure, renderer failure, and partial Action failure have tested recovery paths.

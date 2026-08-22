@@ -133,6 +133,15 @@ REQUIRED_SPEC_TERMS = (
     "promoted_attachment_refs",
     "attachment.upload.updated",
     "attachment.processing.updated",
+    "Execution mode",
+    "Auto-apply policy",
+    "execution_mode: read_only | confirm_each | auto_apply_allowlist",
+    "action.policy_evaluated",
+    "action.auto_applying",
+    "confirm_each",
+    "auto_apply_allowlist",
+    "AutoAppliedResultCard",
+    "ExecutionModeSettings",
     "release time",
     "runtime",
     "MUST NOT delete or rewrite original messages",
@@ -169,6 +178,12 @@ HOST_INTEGRATION_LEVELS = (
     "Level 1",
     "Level 2",
     "Level 3",
+)
+
+ACTION_EXECUTION_MODES = (
+    "read_only",
+    "confirm_each",
+    "auto_apply_allowlist",
 )
 
 MARKDOWN_LINK = re.compile(r"\[[^\]]+\]\(([^)]+)\)")
@@ -308,6 +323,22 @@ def main() -> int:
         failures.append(
             "docs/mvp-spec.md: Host integration table must contain exactly Level 0 through "
             f"Level 3 in order (found {integration_rows})"
+        )
+
+    try:
+        execution_section = spec.split("### Action execution modes", 1)[1].split(
+            "### Core entities", 1
+        )[0]
+    except IndexError:
+        execution_section = ""
+    execution_modes = tuple(
+        match.group(1)
+        for match in re.finditer(r"^- `([^`]+)`:", execution_section, flags=re.MULTILINE)
+    )
+    if execution_modes != ACTION_EXECUTION_MODES:
+        failures.append(
+            "docs/mvp-spec.md: Action execution modes must contain exactly read_only, "
+            f"confirm_each, and auto_apply_allowlist in order (found {execution_modes})"
         )
 
     if failures:

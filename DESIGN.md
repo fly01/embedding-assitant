@@ -3,8 +3,8 @@
 ## Source of truth
 
 - Status: Active for MVP v0.1
-- Last refreshed: 2026-08-21
-- Primary product surfaces: embedded assistant shell, conversation thread, multimodal composer, thinking/tool activity, action workspace, citations, plugin renderers, developer inspectors.
+- Last refreshed: 2026-08-22
+- Primary product surfaces: embedded assistant shell, conversation thread, multimodal composer, Attachment System and Lightbox, voice input, reasoning/tool activity, Action Workspace, citations, Privacy Center, integration/plugin renderers, and developer inspectors.
 - Related specification: `docs/mvp-spec.md`.
 - Evidence reviewed: the public MVP specification, established embedded-assistant patterns across wellness, itinerary-planning, and household-finance domains, and common accessibility and recovery requirements for mobile chat interfaces.
 
@@ -43,7 +43,7 @@
 - Principle 3: reasoning disclosure is progressive and Host-bounded, ranging from hidden status through contextual activity and developer diagnostics to an explicitly enabled raw provider trace.
 - Principle 4: model output is not a committed business change; side effects pass through typed actions, confirmation policy, host validation, idempotency, and audit.
 - Principle 5: context summaries are rebuildable model-input caches, not memory and not business truth. Compression never deletes or rewrites original messages.
-- Principle 6: plugins extend declared contracts and slots; they cannot bypass host data access, permissions, transactions, or audit.
+- Principle 6: Host integrations and optional plugins extend declared contracts and slots; they cannot bypass Host data access, permissions, transactions, Privacy controls, or audit.
 - Principle 7: single and multiple Conversation modes share one Runtime, while `lite`, `balanced`, and `durable` context profiles are presets over one Context Compiler rather than separate implementations.
 - Principle 8: every Host supplies an integration boundary, but custom Domain Plugin code is optional; direct embed, declarative Manifest, generated integration, and custom plugin are progressive levels over the same contracts.
 - Principle 9: Privacy Center is one mandatory control surface for all assistant-managed data; source deletion cascades to registered derivatives, while Host-owned business records and required audit retention are disclosed and handed off rather than silently deleted.

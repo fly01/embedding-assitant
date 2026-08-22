@@ -522,18 +522,18 @@ p {
 .action-card dd {
   margin: 0;
 }
-.action-fields {
+.action-card .action-fields {
   display: grid;
   gap: 7px;
   margin: 10px 0;
 }
-.action-fields label {
+.action-card .action-fields label {
   display: grid;
   grid-template-columns: minmax(90px, 1fr) 2fr;
   align-items: center;
   gap: 8px;
 }
-.action-fields input {
+.action-card .action-fields input {
   min-width: 0;
   border: 1px solid var(--fa-border, #d8dde3);
   border-radius: 7px;

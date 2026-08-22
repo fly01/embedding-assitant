@@ -4,7 +4,7 @@
 
 - Version: `0.1.0-draft`
 - Status: draft implementation baseline
-- Last updated: 2026-08-21
+- Last updated: 2026-08-22
 - Scope: minimum viable public framework specification intended for open-source release
 - Intended audience: framework maintainers, Host integration authors, application developers, plugin authors, UI contributors, and reviewers
 
@@ -72,11 +72,12 @@ The MVP does not include:
 | Run | One execution initiated by a user message, including model output, tool calls, events, and completion state. |
 | Tool | A typed capability callable by the runtime. A tool cannot directly exceed its declared permissions or side-effect class. |
 | Action | Typed representation of a Host-side business change. It is applied only after Host execution policy selects user confirmation or a pre-approved auto-apply path. |
+| Executable Action | Action carrying an immutable positive policy decision that authorizes either a user-confirmed or reviewed automatic Host application. |
 | Execution mode | Host and scope policy selecting `read_only`, `confirm_each`, or `auto_apply_allowlist` behavior for business Actions. |
 | Auto-apply policy | Reviewed allowlist and bounded risk rules that permit eligible Actions to skip per-operation user confirmation while retaining validation, transaction, idempotency, audit, and result visibility. |
 | Host Data Write Tool | Manifest-generated schema-bound create, update, upsert, delete, link, or unlink capability that always produces a typed Action and executes only through the Host data adapter. |
 | Host data adapter | Host-owned transactional boundary that maps approved data tools to scoped repositories or APIs without exposing raw database credentials, SQL, tables, or unrestricted queries to the model. |
-| Capability package | An officially maintained, versioned package that applications explicitly enable, except for the required safety baseline. |
+| Capability package | An officially maintained, versioned package enabled according to its documented default and Host policy; the required safety baseline cannot be disabled. |
 | Host Integration Manifest | Declarative application configuration for context sources, tools, Actions, permissions, generic renderers, and adapter mappings. |
 | Integration Generator | Development/build-time tool that analyzes public application contracts and produces a reviewable Host Integration Manifest plus scaffolding. |
 | Plugin | Optional release-time-installed executable extension for capabilities that cannot be expressed safely through configuration or generated adapters. |
@@ -135,8 +136,8 @@ Host Adapter ── Framed Assistant protocol ── Headless SDK ── Default
 
 A host MAY adopt the framework in stages:
 
-1. text conversation with the default assistant shell;
-2. Host Adapter and deterministic Essentials tools;
+1. text conversation with the default assistant shell, minimal Host Adapter, and enabled Essentials baseline;
+2. additional bounded Host context and deterministic read-only tools;
 3. image, voice, and file input;
 4. configurable reasoning disclosure and visible tool activity;
 5. Context Management or Knowledge & Retrieval;
@@ -199,7 +200,7 @@ Automatic application never means direct model database access. The Action remai
 
 An Action is auto-apply eligible only when its Integration Manifest or Plugin Manifest is approved, its type is explicitly allowlisted, the actor remains authorized, payload and current target version validate, risk and impact are within configured bounds, an idempotency key exists, and Host transaction semantics are known. A policy miss falls back to `awaiting_confirmation` or `blocked`; it does not execute optimistically.
 
-Delete, payment/transfer, external communication, private-data sharing, account or permission change, bulk mutation, irreversible operation, attachment Promotion, Privacy deletion, ambiguous target, low-confidence OCR/ASR, and any Action without an approved compensation policy require confirmation regardless of execution mode.
+Payments, transfers, and other `dangerous` capabilities are unavailable in the MVP and MUST remain blocked even if a user offers confirmation. Supported Actions for delete, external communication, private-data sharing, account or permission change, bulk mutation, irreversible operation, attachment Promotion, ambiguous targets, low-confidence OCR/ASR, and operations without an approved compensation policy require confirmation regardless of execution mode. Privacy deletion uses the separate Privacy Job destructive-confirmation flow.
 
 ### Core entities
 
@@ -243,9 +244,13 @@ Every public payload MUST include a schema version. Breaking changes require a n
 interface AssistantEvent<TPayload = unknown> {
   schema_version: "0.1";
   event_id: string;
+  scope: {
+    kind: "run" | "conversation" | "attachment" | "privacy_job" | "composer";
+    id: string;
+  };
   seq: number;
-  conversation_id: string;
-  run_id: string;
+  conversation_id?: string;
+  run_id?: string;
   type:
     | "run.started"
     | "message.created"
@@ -287,7 +292,9 @@ interface AssistantEvent<TPayload = unknown> {
 
 Normative event behavior:
 
-- `seq` MUST increase monotonically within a run.
+- `scope.id` MUST identify the Run, Conversation, Attachment, Privacy Job, or Composer session whose stream owns the event.
+- `seq` MUST increase monotonically within that scope.
+- Run-scoped events MUST include `conversation_id` and `run_id`. Attachment-, Privacy-Job-, and Composer-scoped events MUST NOT invent a `run_id`; they MAY include `conversation_id` only when one already exists.
 - `event_id` MUST be stable so clients can deduplicate replayed events.
 - Clients MUST ignore unknown event types safely and record a diagnostic.
 - A sequence gap MUST trigger reconciliation rather than silent state mutation.
@@ -345,7 +352,9 @@ History pagination MUST recompute dividers after pages merge and preserve the re
 The protocol is transport-neutral. The reference server exposes:
 
 - `POST /v1/assistant/conversations`
+- `GET /v1/assistant/conversations`
 - `GET /v1/assistant/conversations/{conversation_id}`
+- `PATCH /v1/assistant/conversations/{conversation_id}`
 - `GET /v1/assistant/conversations/{conversation_id}/messages?before=<message_id>&limit=<n>`
 - `POST /v1/assistant/conversations/{conversation_id}/runs`
 - `GET /v1/assistant/runs/{run_id}/events?after_seq=<seq>`
@@ -368,6 +377,8 @@ The protocol is transport-neutral. The reference server exposes:
 - `GET /v1/assistant/privacy/jobs/{job_id}`
 
 The reference implementation uses Server-Sent Events for run events. A run request MUST persist the user message before model execution and return `run_id` plus the latest sequence number. Clients resume with `after_seq`.
+
+In `multiple` mode, the collection endpoint lists authorized Conversations and the patch endpoint handles rename and archive state. Conversation deletion uses the scoped Privacy deletion preview and job flow rather than bypassing it with a direct transport delete.
 
 ### Error model
 
@@ -421,7 +432,7 @@ All modules except M0 build against M0 contracts. Every module MUST provide its 
 - valid and invalid golden fixtures;
 - schema validators and a conformance command.
 
-**Acceptance:** event replay reconstructs message, tool, citation, and action state; invalid fixtures fail with actionable diagnostics; module IDs and public fields are versioned.
+**Acceptance:** scoped event replay reconstructs Conversation/Message/time, Attachment/Voice, Reasoning, Tool/Citation, Action/Policy, Context/Memory, and Privacy state; invalid fixtures fail with actionable diagnostics; module IDs and public fields are versioned.
 
 ### M1. Assistant Runtime and Model Adapters
 
@@ -444,10 +455,12 @@ interface AssistantHostAdapter {
   getPageContext(scope: PageContextScope): Promise<PageContext>;
   getDataToolCapabilities?(): Promise<HostDataToolCatalog>;
   authorize(request: PermissionRequest): Promise<PermissionDecision>;
-  applyAction(action: ConfirmedAction): Promise<ActionApplyResult>;
+  applyAction(action: ExecutableAction): Promise<ActionApplyResult>;
   refreshData?(result: ActionApplyResult): Promise<void>;
 }
 ```
+
+`ExecutableAction` can be created only after a positive immutable `ActionPolicyDecision` records either explicit user confirmation or reviewed `auto_apply_allowlist` authorization. The model cannot construct this boundary type directly.
 
 **Acceptance:** missing capabilities are reported as disabled; the Host supplies a stable Conversation scope; denied permissions produce structured results; page context has a field allowlist and size budget; any Host data capability catalog is constrained by the approved Integration Manifest and current actor scope; Action application and refresh are explicit, testable callbacks; a `Level 1` application can implement the boundary through an approved Host Integration Manifest without custom Domain Plugin code.
 
@@ -479,7 +492,6 @@ Host Data Write Tools are an optional M3 capability family and are disabled by d
 ```yaml
 host_data_tools:
   enabled: false
-  expose_to_model: false
   raw_sql: false
 
   operations:
@@ -531,9 +543,9 @@ Custom Domain Plugins are optional and are installed at release time through the
 
 **Purpose:** provide an opinionated interface that is ready to ship and remains themeable.
 
-Required components include `AssistantShell`, `ConversationThread`, `MessageTimeDivider`, `UserMessage`, `AssistantMessage`, `StreamingMarkdown`, `ThinkingDisclosure`, `ToolActivity`, `Composer`, `AttachmentTray`, `AttachmentGrid`, `AttachmentFileCard`, `AttachmentProcessingStatus`, `AttachmentLightbox`, `VoiceMessageBubble`, `LiveDictationControl`, `TranscriptionStatus`, `ActionCard`, `AutoAppliedResultCard`, `ExecutionModeSettings`, `HostDataToolSettings`, `CitationList`, `PrivacyCenter`, `PrivacyJobStatus`, `ErrorBanner`, `StopButton`, `RegenerateButton`, and plugin renderer slots.
+Required components include `AssistantShell`, `ConversationThread`, `ConversationSwitcher`, `ConversationManager`, `MessageTimeDivider`, `UserMessage`, `AssistantMessage`, `StreamingMarkdown`, `ThinkingDisclosure`, `ToolActivity`, `Composer`, `AttachmentTray`, `AttachmentGrid`, `AttachmentFileCard`, `AttachmentProcessingStatus`, `AttachmentLightbox`, `VoiceMessageBubble`, `LiveDictationControl`, `TranscriptionStatus`, `ActionCard`, `AutoAppliedResultCard`, `ExecutionModeSettings`, `HostDataToolSettings`, `CitationList`, `PrivacyCenter`, `PrivacyJobStatus`, `ErrorBanner`, `StopButton`, `RegenerateButton`, and plugin renderer slots.
 
-**Acceptance:** panel, drawer, inline, and full-page modes work at mobile and desktop widths; keyboard and screen-reader paths cover every operation; the five-minute default time-grouping rule survives pagination without moving the reading anchor; Attachment Tray location, multi-selection, stable order, per-item retry, message grouping, gallery navigation, and unavailable-source states remain consistent across surfaces; both voice modes expose distinct states and privacy expectations; Privacy Center inventory, preview, export, deletion, partial failure, and retention-limit states are accessible; internal tool identifiers remain hidden below developer level; all six disclosure levels render distinctly; `raw_trace` shows the full provider-supplied trace when available and an explicit unavailable state otherwise.
+**Acceptance:** panel, drawer, inline, and full-page modes work at mobile and desktop widths; `multiple` mode exposes authorized create, switch, rename, archive, and Privacy-Job deletion paths; keyboard and screen-reader paths cover every operation; the five-minute default time-grouping rule survives pagination without moving the reading anchor; Attachment Tray location, multi-selection, stable order, per-item retry, message grouping, gallery navigation, and unavailable-source states remain consistent across surfaces; both voice modes expose distinct states and privacy expectations; Privacy Center inventory, preview, export, deletion, partial failure, and retention-limit states are accessible; internal tool identifiers remain hidden below developer level; all six disclosure levels render distinctly; `raw_trace` shows the full provider-supplied trace when available and an explicit unavailable state otherwise.
 
 ### M7. Multimodal Input Pack
 
@@ -672,12 +684,15 @@ Asynchronous compaction MUST use source revisions and compare-and-swap activatio
 ```text
 proposed -> policy_evaluating
 policy_evaluating -> blocked | awaiting_confirmation | auto_applying
+blocked -> policy_evaluating                         (explicit reauthorization or policy/target refresh)
 awaiting_confirmation <-> editing
 awaiting_confirmation -> applying -> applied
 auto_applying -> applied
 editing -> cancelled
-awaiting_confirmation -> cancelled | expired | blocked_plugin_disabled
-applying | auto_applying -> failed -> retrying
+awaiting_confirmation -> cancelled | expired
+proposed | policy_evaluating | awaiting_confirmation | editing | failed | retrying -> blocked_plugin_disabled
+applying | auto_applying -> failed
+failed -> retrying -> policy_evaluating
 applied -> undoing -> undone | undo_failed
 blocked_plugin_disabled -> policy_evaluating      (compatible re-enable + revalidation)
 blocked_plugin_disabled -> cancelled | archived   (manual resolution)
@@ -685,7 +700,7 @@ blocked_plugin_disabled -> cancelled | archived   (manual resolution)
 
 **Responsibilities:** typed proposals, execution-mode and allowlist policy evaluation, immutable policy decisions, schema-driven editing, Attachment source provenance and Promotion preview, confirmation, bounded automatic application, cancellation, plugin-disable blocking, conflict handling, idempotent application, result visibility, partial results, retry, archival, and optional undo.
 
-**Acceptance:** the model can propose but cannot bypass execution policy or apply directly; `read_only` rejects write proposals, `confirm_each` always reaches `awaiting_confirmation`, and `auto_apply_allowlist` reaches `auto_applying` only after a positive reviewed policy decision. Both confirmed and automatic application recheck authorization, target version, bounds, and validation immediately before an idempotent Host transaction. Policy misses fall back to confirmation or blocked state. Auto-applied result cards remain visible and expose edit/undo only when supported. An Action derived from attachments preserves stable `source_attachment_refs`, page/region or processor provenance where applicable, and separately lists any `promoted_attachment_refs` before mandatory confirmation. Disabling a contributing plugin moves every not-yet-applying Pending Action to `blocked_plugin_disabled` without cancelling or executing it. Compatible re-enable requires revalidation before returning to policy evaluation; permanent removal allows manual cancellation or archival. Applied history remains readable, and an Action already in `applying` or `auto_applying` records its eventual Host result rather than being silently interrupted.
+**Acceptance:** the model can propose but cannot bypass execution policy or apply directly; `read_only` rejects write proposals, `confirm_each` always reaches `awaiting_confirmation`, and `auto_apply_allowlist` reaches `auto_applying` only after a positive reviewed policy decision. Both confirmed and automatic application recheck authorization, target version, bounds, and validation immediately before an idempotent Host transaction. Policy misses fall back to confirmation or blocked state. Auto-applied result cards remain visible and expose edit/undo only when supported. An Action derived from attachments preserves stable `source_attachment_refs`, page/region or processor provenance where applicable, and separately lists any `promoted_attachment_refs` before mandatory confirmation. Disabling a contributing plugin moves every non-terminal Pending Action that has not begun applying to `blocked_plugin_disabled` without cancelling or executing it. Compatible re-enable requires revalidation before returning to policy evaluation; permanent removal allows manual cancellation or archival. Applied history remains readable, and an Action already in `applying` or `auto_applying` records its eventual Host result rather than being silently interrupted.
 
 ### M12. Safety & Governance
 
@@ -701,15 +716,15 @@ blocked_plugin_disabled -> cancelled | archived   (manual resolution)
 
 **Responsibilities:** Mock model server, stream inspector, context-profile simulator, Context Manifest/token inspector, tool playground, Host Data Tool catalog/transaction/conflict simulator, permission viewer, Privacy Resource/job simulator, Integration Generator, Manifest review report, generated adapter/fixture scaffolding, replay runner, plugin compatibility validator, fixed evaluation corpus, and failure simulation.
 
-**Acceptance:** CI runs without provider credentials; a sanitized replay fixture reproduces a failed run; the Integration Generator never activates writes and reports unresolved security or transaction semantics; error simulation covers disconnect, timeout, malformed events, tool failure, permission denial, renderer failure, and attachment failure.
+**Acceptance:** CI runs without external credentials; sanitized replay fixtures reproduce failed scoped streams without private payloads; the Integration Generator never activates writes and reports unresolved security or transaction semantics; inspectors and failure simulation cover model/Host/processor/search/ASR/data-transaction services, disconnect, timeout, malformed events, tool or parser failure, permission denial, stale versions, policy misses, renderer/plugin failure, attachment failure, and partial Privacy deletion.
 
 ### M14. Reference Integrations and Migration Proof
 
 **Purpose:** prove that the public contracts are not tailored to one domain.
 
-The repository SHOULD include domain-neutral examples for wellness logging, itinerary planning, and household finance. The examples collectively cover direct embed, declarative Manifest, generated integration, and custom plugin paths. One real or representative Host MUST integrate the Host Adapter, default UI, and at least one confirmed Action.
+The repository SHOULD include domain-neutral examples for wellness logging, itinerary planning, and household finance. The examples collectively cover direct embed, declarative Manifest, generated integration, custom plugin paths, confirmed Actions, and reviewed allowlisted automatic Actions. One real or representative Host MUST integrate the Host Adapter, default UI, and at least one confirmed Action.
 
-**Acceptance:** all examples use the same event, tool, Action, and renderer contracts; at least one business Action works without custom plugin code; no domain field is added to core schemas; renderer failure falls back safely; permission changes prevent confirmation; the example suite runs with Mock model and Fake Host Adapter fixtures.
+**Acceptance:** all examples use the same event, tool, Action, and renderer contracts; at least one confirmed and one reviewed allowlisted automatic business Action work without custom plugin code; no domain field is added to core schemas; renderer failure falls back safely; permission changes prevent confirmation or automatic application; the example suite runs with Mock model and Fake Host Adapter fixtures.
 
 ## Official capability packages
 
@@ -722,7 +737,7 @@ The repository SHOULD include domain-neutral examples for wellness logging, itin
 | Context Management | disabled | `balanced` and `durable` profiles, segmentation, ledger, summaries, retrieval, invalidation, rebuild, and Context Manifest; core always provides `lite` |
 | Knowledge & Retrieval | disabled | web, URL, document, host knowledge, citations |
 | Memory | disabled | explicit scoped Memory with user controls |
-| Action Workspace | disabled | policy and execution layer for optional Host Data Write Tools: `read_only`, default `confirm_each`, and bounded `auto_apply_allowlist` with typed Actions, policy evidence, idempotent Host application, results, and optional undo |
+| Action Workspace | disabled | policy and execution layer for optional Host Data Write Tools and integration/plugin business Actions: `read_only`, default `confirm_each`, and bounded `auto_apply_allowlist` with typed Actions, policy evidence, idempotent Host application, results, and optional undo |
 | Safety & Governance | minimum baseline required | permission enforcement, write blocking, redaction, Privacy Center inventory/export/deletion, derived-data invalidation, and audit; advanced limits are configurable |
 | Developer Toolkit | development only | Mock services, inspectors, replay, validation, evaluation, and failure simulation |
 
@@ -733,6 +748,7 @@ The repository SHOULD include domain-neutral examples for wellness logging, itin
 A `Level 1` integration is declarative. A `Level 2` Integration Generator produces the same format with `review_status: draft` and an unresolved-risk report.
 
 ```yaml
+schema_version: "0.1"
 application:
   id: org.example.sample-app
   conversation_mode: single
@@ -783,6 +799,7 @@ The minimum `Level 3` custom plugin manifest contains:
 
 ```json
 {
+  "schema_version": "0.1",
   "id": "org.example.sample-plugin",
   "name": "Sample Plugin",
   "version": "0.1.0",
@@ -815,7 +832,7 @@ Custom Plugin lifecycle requirements:
 
 Plugins MUST fail closed. A missing permission, incompatible protocol range, invalid schema, or failed migration prevents activation.
 
-When a plugin is disabled, every not-yet-applying Pending Action contributed by that plugin enters `blocked_plugin_disabled`. The framework MUST NOT cancel or execute it automatically. Compatible re-enable triggers permission, payload, schema, and version revalidation before the Action returns to `awaiting_confirmation`. Permanent removal allows manual cancellation or archival. Applied Actions remain readable through stored data and a generic renderer.
+When a plugin is disabled, every non-terminal Pending Action contributed by that plugin that has not begun applying enters `blocked_plugin_disabled`. The framework MUST NOT cancel or execute it automatically. Compatible re-enable triggers permission, payload, schema, version, and execution-policy revalidation before the Action returns to `policy_evaluating`. Permanent removal allows manual cancellation or archival. Applied Actions remain readable through stored data and a generic renderer.
 
 ## Frontend UX and accessibility
 
@@ -859,7 +876,7 @@ Minimum behavior:
 
 ## Context, memory, and data authority
 
-The framework distinguishes three information classes:
+The framework distinguishes four information classes:
 
 | Class | Authority | Retention rule |
 | --- | --- | --- |
@@ -930,11 +947,11 @@ Privacy Jobs are scoped to the authenticated actor and Host scope, require destr
 - Attachment-derived facts and Action fields retain processor/version plus source Attachment/page/region provenance. Promotion into a Host business resource requires explicit Action confirmation.
 - Every Action execution mode MUST revalidate authorization, payload integrity, current target version, policy bounds, and idempotency immediately before Host application.
 - `auto_apply_allowlist` is deny-by-default and cannot be selected by the model. Only approved Manifest policy may allow a low-risk bounded Action type. Policy decisions record rule/version, actor/scope, risk, confidence, bounds, reason, and outcome.
-- Delete, payment/transfer, external communication, private-data sharing, account/permission change, bulk or irreversible mutation, Attachment Promotion, Privacy deletion, ambiguous target, low-confidence OCR/ASR, and Actions without approved compensation require confirmation regardless of execution mode.
+- Payment, transfer, and other `dangerous` capabilities remain unavailable and blocked in the MVP. Supported Actions for delete, external communication, private-data sharing, account/permission change, bulk or irreversible mutation, Attachment Promotion, ambiguous targets, low-confidence OCR/ASR, and operations without approved compensation require confirmation regardless of execution mode. Privacy deletion uses the separate Privacy Job destructive-confirmation flow.
 - Every committed Action MUST have an idempotency key and audit record.
 - Partial failure MUST identify successful, failed, and retryable items.
 - Live-dictation audio is ephemeral by default and is not retained as a Message. Voice-message audio is persisted as private user content under explicit Host retention and deletion policy.
-- `raw_trace` requires explicit Host policy and viewer authorization, is excluded from normal logs, Memory, and Context Summary by default, and is not persisted unless the Host separately enables trace retention.
+- `raw_trace` requires explicit Host policy and viewer authorization and is always excluded from normal logs, Memory, Context Summary, the Working Ledger, and retrieval indexes. Separate Host trace retention makes it eligible only for authorized display, export, and deletion.
 - Raw-trace exports MUST be labelled as sensitive provider reasoning content.
 - Generated Host Integration Manifests remain `draft` until a reviewer resolves permission, privacy, idempotency, transaction, confirmation, cascading-delete, and undo risks. Runtime discovery MUST NOT activate undeclared Host operations.
 - Privacy Resource inventory and jobs require actor plus Host-scope authorization. Exports use private authenticated delivery; deletion cannot report completion until every registered processor reports a terminal result or is explicitly disclosed as unresolved.
@@ -982,7 +999,7 @@ The following lanes run in parallel on Wave 1 public contracts or fakes:
 
 | Lane | Modules | Deliverables |
 | --- | --- | --- |
-| Default experience | M6 | Shell/Thread/Composer, message time, Attachment UI/Lightbox, Voice UI, Reasoning, Tool/Citation, Action modes, Privacy Center, accessibility/responsive states |
+| Default experience | M6 | Shell/Conversation management/Thread/Composer, message time, Attachment UI/Lightbox, Voice UI, Reasoning, Tool/Citation, Action modes, Privacy Center, accessibility/responsive states |
 | Multimodal | M7 | Attachment Asset lifecycle, private variants, processors, Run gates, Promotion, voice_message/live_dictation adapters |
 | Context | M8 | `lite`/`balanced`/`durable`, segmentation, ledger, summaries, retrieval, invalidation, rebuild, Context Manifest |
 | Knowledge | M9 | Search/URL/document/Host knowledge adapters, citations, freshness/trust, external permission and budgets |
@@ -1018,7 +1035,7 @@ Conformance is evidence-based and modular. Passing one module suite permits a cl
 
 - validate every public schema with valid, boundary, unknown-optional-field, and invalid fixtures;
 - generate TypeScript/Python/OpenAPI artifacts reproducibly and detect drift from canonical JSON Schemas;
-- replay every event type and content part, including unknown events, duplicate IDs, sequence gaps, version mismatch, and generic-renderer fallback;
+- replay every event type, event scope, and content part, including unknown events, duplicate IDs, per-scope sequence gaps, version mismatch, and generic-renderer fallback;
 - verify stored-object schema versions and deterministic forward/rollback or compensating migrations;
 - verify Attachment, Voice, Reasoning, Action Policy, Host Data Tool, Context, Memory, Privacy, Integration, Plugin, Error, and Audit contracts before Wave 0 exit.
 
@@ -1043,20 +1060,20 @@ Conformance is evidence-based and modular. Passing one module suite permits a cl
 
 - cover direct embed, declarative Manifest, generated Manifest review, and custom Domain Plugin paths;
 - verify Integration Generator read scaffolding, write-proposal and auto-apply eligibility review gates, unresolved-risk reporting, and zero activation before review;
-- validate protocol/schema ranges, dependencies, configuration, capability/permission declarations, Privacy Resources, migrations, renderer registration, and fail-closed activation;
+- validate Manifest schema versions, plugin protocol ranges, dependencies, configuration, capability/permission declarations, Privacy Resources, migrations, renderer registration, and fail-closed activation;
 - disable integrations/plugins without leaving callable tools or orphaning export/delete handlers; historical rendering remains available through generic fallback;
 - verify `blocked_plugin_disabled` Actions, compatible re-enable revalidation, permanent removal cancellation/archival, and applied-history readability.
 
 ### C4. Headless state conformance
 
 - replay every event into serializable reducers for Conversation, Message/time, Attachment, Voice, Reasoning, Tool/Citation, Action/Policy, Context, and Privacy;
-- cover duplicates, out-of-order/gap detection, optimistic/local IDs, persisted reconciliation, cache restore, and unknown states;
+- cover per-scope duplicates, out-of-order/gap detection, optimistic/local IDs, persisted reconciliation, cache restore, and unknown states;
 - preserve draft text/attachments, reading anchors, bottom-follow ownership, item order, retry state, and per-Message grouping through failure and pagination;
 - verify state has no visual-framework or Host-business dependency and can run entirely against C0 fixtures.
 
 ### C5. Default UI and Multimodal conformance
 
-- expose independently runnable fixture groups for Shell/Thread/Composer, chronology, Attachment, Voice, Reasoning/Tool/Citation, Action modes, Privacy Center, accessibility, responsive, and recovery behavior rather than one monolithic visual suite;
+- expose independently runnable fixture groups for Shell/Conversation management/Thread/Composer, chronology, Attachment, Voice, Reasoning/Tool/Citation, Action modes, Privacy Center, accessibility, responsive, and recovery behavior rather than one monolithic visual suite;
 - component, keyboard, focus, screen-reader, reduced-motion, contrast, 320/360 px, desktop, safe-area, and visual-regression fixtures;
 - five-minute message-time grouping, cross-date/timezone labels, pagination recomputation, exact-time detail, and in-place status updates;
 - Attachment Asset/Draft/Message-Part lifecycle, Tray placement/append/limit/reorder, per-item states/retry, one-Message grouping, grids, file cards, Lightbox, tombstones, private variants, Run gates, provenance, Promotion, and privacy invalidation;
@@ -1069,15 +1086,15 @@ Conformance is evidence-based and modular. Passing one module suite permits a cl
 - complete-turn segmentation, summary trigger, correction/supersession, async compaction race, compare-and-swap, invalidation, permission filtering, provenance, fallback, and rebuild;
 - hybrid historical retrieval, source-span recall, citations, freshness/trust, external-data permission/redaction, empty results, timeout, and call budgets;
 - Memory create/view/edit/delete/export, conversation/app/user scopes, provenance, authorization, and exclusion of guesses/cancelled Actions;
-- ensure Attachment deletion, permission revocation, Memory deletion, Action changes, and retained raw-trace policy correctly affect derived context.
+- ensure Attachment deletion, permission revocation, Memory deletion, and Action changes correctly affect derived context while `raw_trace` remains excluded regardless of separate retention policy.
 
 ### C7. Action, Safety, and Privacy conformance
 
 #### C7a. Safety and Privacy baseline — Wave 1
 
 - enforce permission/scope decisions, redaction, quotas, maximum tool calls, audit, and sensitive raw-trace/attachment handling without M11;
-- prove execution policy is deny-by-default, cannot be model-selected or self-expanded, and routes every side-effect proposal toward confirmation or a reviewed allowlist decision;
-- test every forced-confirmation category as an independent case: delete, payment/transfer, external communication, private sharing, account/permission change, bulk/irreversible mutation, Attachment Promotion, Privacy deletion, ambiguity, low-confidence OCR/ASR, and missing compensation;
+- prove execution policy is deny-by-default, cannot be model-selected or self-expanded, routes every supported Host business-mutation proposal toward confirmation or a reviewed allowlist decision, and blocks unsupported or `dangerous` proposals;
+- prove payment, transfer, and other `dangerous` capabilities remain blocked even when confirmation is offered; test every supported forced-confirmation category independently: delete, external communication, private sharing, account/permission change, bulk/irreversible mutation, Attachment Promotion, ambiguity, low-confidence OCR/ASR, and missing compensation; test Privacy deletion through its separate destructive-confirmation contract;
 - register Privacy Resources and validate scoped inventory, private export envelope, deletion preview/confirmation contract, Host-owned handoff metadata, retention disclosure, and unresolved-processor truthfulness using fake jobs;
 - publish M12 policy, audit, Privacy, and failure-injection fakes required by Wave 2.
 
@@ -1150,7 +1167,7 @@ The MVP is complete when:
 - [ ] Host Data Write Tools are absent by default; an approved Manifest can enable scoped create/update/upsert/delete/link/unlink tools without exposing raw SQL or unrestricted database access.
 - [ ] A `Level 2` generated Manifest reports unresolved risks and cannot activate writes before review.
 - [ ] A sample `Level 3` Domain Plugin contributes a custom renderer or business handler without modifying core.
-- [ ] Every side-effecting operation passes through Action Workspace and Host execution policy; `confirm_each` is the default, and only reviewed low-risk allowlisted Actions can use automatic application.
+- [ ] Every Host business mutation passes through Action Workspace and Host execution policy; `confirm_each` is the default, and only reviewed low-risk allowlisted Actions can use automatic application. Privacy deletion passes through the separate mandatory Privacy Job confirmation and policy flow.
 - [ ] Context Management proves summary rebuild and unchanged original history.
 - [ ] The same Runtime supports `single` and `multiple` Conversation modes, and Context Management supports `lite`, `balanced`, and `durable` profiles through one compiler contract.
 - [ ] Stream interruption, upload failure, permission denial, provider failure, renderer failure, and partial Action failure have tested recovery paths.
@@ -1163,7 +1180,7 @@ The MVP is complete when:
 
 The following work is intentionally deferred beyond the MVP:
 
-- official React, SwiftUI, and other framework-specific UI kits;
+- additional official UI kits for React, SwiftUI, and other frameworks beyond the MVP Vue 3 reference client;
 - vector database and embedding-provider standardization;
 - signed plugin distribution and remote update infrastructure;
 - cross-application Memory federation;

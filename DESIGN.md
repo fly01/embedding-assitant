@@ -34,7 +34,7 @@
 ## Information architecture
 
 - Primary navigation: owned by the host application; the framework supplies embeddable surfaces rather than a global navigation model.
-- Core routes/screens: `AssistantPanel`, `AssistantDrawer`, `AssistantInline`, `AssistantFullScreen`, optional conversation history, and development-only inspector surfaces.
+- Core routes/screens: `AssistantPanel`, `AssistantDrawer`, `AssistantInline`, `AssistantFullScreen`, conversation history and management when `multiple` mode is enabled, and development-only inspector surfaces.
 - Content hierarchy: conversation thread first; composer second; thinking, tool, citation, and action state inline with the relevant assistant turn; high-risk confirmation always explicit.
 
 ## Design principles
@@ -63,8 +63,8 @@
 ## Components
 
 - Existing patterns to preserve as behavioral evidence: streaming Markdown, sequence-stable paginated history, grouped message-time dividers, multimodal composition, multi-image selection, private thumbnail/preview/original variants, playable voice messages, editable live dictation, visible tool activity, resumable streams, and editable confirm/cancel Action cards.
-- New/changed components: headless assistant store, assistant shell, conversation thread, `MessageTimeDivider`, message-part renderers, multimodal composer, `AttachmentTray`, `AttachmentGrid`, `AttachmentFileCard`, `AttachmentProcessingStatus`, `AttachmentLightbox`, `VoiceMessageBubble`, `LiveDictationControl`, `TranscriptionStatus`, reasoning disclosure, tool activity, citations, Action Workspace, `ExecutionModeSettings`, `HostDataToolSettings`, `AutoAppliedResultCard`, `PrivacyCenter`, `PrivacyResourceList`, `DeletionImpactPreview`, `PrivacyJobStatus`, error recovery, plugin slots, Host-context badges, Integration Manifest editor/review, generated-risk report, Context Profile settings, Context Manifest inspector, and developer inspectors.
-- Variants and states: inline, drawer, side panel, full-screen tab, and floating panel; signed out, disabled by Host, loading history, streaming, interrupted, offline, attachment selected/validating/optimizing/uploading/uploaded/processing/ready/partial/failed/unsupported/blocked, required attachment waiting for user decision, Attachment Lightbox open/unavailable, recording voice message, voice message transcribing, voice transcription failed, live dictation loading/listening/partial/final, permission denied, Host data tools disabled/enabled/review-blocked/unauthorized/conflicted, execution read-only/policy-evaluating/awaiting-confirmation/auto-applying/auto-applied/blocked, privacy inventory loading, export preparing/ready/failed, deletion preview/awaiting-confirmation/running/partial/completed/failed, unresolved processor, retention restricted, Integration Manifest draft, review blocked, plugin disabled, Action blocked by plugin, reasoning unavailable, raw trace visible, context profile preparing, context fallback active, context rebuild failed, applying, partial failure, applied, cancelled, archived, and undo available.
+- New/changed components: headless assistant store, assistant shell, conversation thread, `ConversationSwitcher`, `ConversationManager`, `MessageTimeDivider`, message-part renderers, multimodal composer, `AttachmentTray`, `AttachmentGrid`, `AttachmentFileCard`, `AttachmentProcessingStatus`, `AttachmentLightbox`, `VoiceMessageBubble`, `LiveDictationControl`, `TranscriptionStatus`, reasoning disclosure, tool activity, citations, Action Workspace, `ExecutionModeSettings`, `HostDataToolSettings`, `AutoAppliedResultCard`, `PrivacyCenter`, `PrivacyResourceList`, `DeletionImpactPreview`, `PrivacyJobStatus`, error recovery, plugin slots, Host-context badges, Integration Manifest editor/review, generated-risk report, Context Profile settings, Context Manifest inspector, and developer inspectors.
+- Variants and states: inline, drawer, side panel, and full-screen tab; signed out, disabled by Host, loading history, streaming, interrupted, offline, attachment selected/validating/optimizing/uploading/uploaded/processing/ready/partial/failed/unsupported/blocked, required attachment waiting for user decision, Attachment Lightbox open/unavailable, recording voice message, voice message transcribing, voice transcription failed, live dictation loading/listening/partial/final, permission denied, Host data tools disabled/enabled/review-blocked/unauthorized/conflicted, execution read-only/policy-evaluating/awaiting-confirmation/auto-applying/auto-applied/blocked, privacy inventory loading, export preparing/ready/failed, deletion preview/awaiting-confirmation/running/partial/completed/failed, unresolved processor, retention restricted, Integration Manifest draft, review blocked, plugin disabled, Action blocked by plugin, reasoning unavailable, raw trace visible, context profile preparing, context fallback active, context rebuild failed, applying, partial failure, applied, cancelled, archived, and undo available.
 - Token/component ownership: the framework owns semantic token names and slot contracts; host applications override values or renderers without forking runtime state.
 
 ### Attachment System
@@ -126,7 +126,7 @@ voice_input:
 | `developer` | Redacted parameters, event sequence, context composition, token usage, model metadata, and correlation IDs. |
 | `raw_trace` | Complete provider reasoning trace exactly as returned by a trace-capable adapter. |
 
-The Host defines the maximum permitted level. `raw_trace` is disabled by default, carries a persistent sensitive-content warning while visible, and shows an explicit unavailable state when the provider does not expose a trace. It is not added to normal logs, Memory, or Context Summary, and it is not persisted unless the Host separately enables trace retention.
+The Host defines the maximum permitted level. `raw_trace` is disabled by default, carries a persistent sensitive-content warning while visible, and shows an explicit unavailable state when the provider does not expose a trace. It is always excluded from normal logs, Memory, Context Summary, the Working Ledger, and retrieval indexes; separate Host trace retention makes it eligible only for authorized display, export, and deletion.
 
 ### Conversation and context configuration
 
@@ -135,20 +135,20 @@ The Host defines the maximum permitted level. `raw_trace` is disabled by default
 - `balanced` adds a Working Ledger, summaries, relevant history retrieval, and a Context Manifest.
 - `durable` adds immutable internal Context Segments, correction and supersession tracking, hybrid raw retrieval, complete provenance, invalidation, and rebuild. It is the recommended profile for long-lived single-Conversation assistants.
 
-Profile controls belong to Host or administrator settings, not the ordinary chat composer. A profile upgrade shows preparing progress in developer/settings surfaces and activates atomically when its derived artifacts are ready. A failed build keeps the previous profile active and exposes diagnostics. A downgrade changes context selection without deleting the raw Conversation.
+Profile controls belong to Host or maintainer settings, not the ordinary chat composer. A profile upgrade shows preparing progress in developer/settings surfaces and activates atomically when its derived artifacts are ready. A failed build keeps the previous profile active and exposes diagnostics. A downgrade changes context selection without deleting the raw Conversation.
 
 ### Host integration experience
 
 | Level | Maintainer experience |
 | --- | --- |
-| `Level 0` | Embed the assistant shell and provide the minimal Host Adapter; no domain tools or writes. |
+| `Level 0` | Embed the assistant shell with the minimal Host Adapter and enabled Essentials baseline; no domain tools or writes. |
 | `Level 1` | Author and review a declarative Host Integration Manifest using generic context, OpenAPI, schema-form, and Action mappings. |
 | `Level 2` | Run the Integration Generator, inspect discovered reads and proposed writes, resolve risk findings, and approve the generated Manifest. |
 | `Level 3` | Add a custom Domain Plugin only for behavior that configuration and generated adapters cannot express safely. |
 
 Integration authoring and generated-risk review are developer/maintainer surfaces, not end-user chat controls. Generated writes remain visibly blocked until permission, privacy, validation, idempotency, transaction, confirmation, cascading-delete, and undo questions are resolved.
 
-If a contributing plugin is disabled, its not-yet-applying Action card remains readable and changes to `blocked_plugin_disabled`. Confirm and edit controls are disabled; the card explains compatible re-enable, manual cancellation, and archival. Re-enabling never resumes execution automatically—it first reruns compatibility, permission, payload, and schema validation. Applied history remains readable through a generic renderer.
+If a contributing plugin is disabled, each non-terminal Action that has not begun applying remains readable and changes to `blocked_plugin_disabled`. Confirm and edit controls are disabled; the card explains compatible re-enable, manual cancellation, and archival. Re-enabling never resumes execution automatically—it reruns compatibility, permission, payload, and schema validation before returning the Action to policy evaluation. Applied history remains readable through a generic renderer.
 
 ### Action execution modes
 
@@ -167,7 +167,7 @@ assistant:
 
 An automatic result is not invisible. `AutoAppliedResultCard` shows the user-facing outcome, “automatically applied” status, relevant source/provenance, policy reason, timestamp, and edit/undo controls only when supported. A policy miss becomes a normal confirmation card or a blocked explanation, not an error and never an optimistic mutation.
 
-Delete, payment/transfer, external communication, private-data sharing, account/permission change, bulk or irreversible mutation, Attachment Promotion, Privacy deletion, ambiguous target, low-confidence OCR/ASR, and Actions without approved compensation always use explicit confirmation.
+Payments, transfers, and other `dangerous` capabilities remain unavailable in the MVP and stay blocked even if a user offers confirmation. Supported Actions for delete, external communication, private-data sharing, account/permission change, bulk or irreversible mutation, Attachment Promotion, ambiguous targets, low-confidence OCR/ASR, and operations without approved compensation always use explicit confirmation. Privacy deletion uses the separate Privacy Job destructive-confirmation flow.
 
 ### Privacy Center
 

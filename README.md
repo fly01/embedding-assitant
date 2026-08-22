@@ -107,7 +107,7 @@ Each module publishes fixtures or fakes so teams can work in parallel after M0 c
 
 | Level | Integration path |
 | --- | --- |
-| `Level 0` | Direct embed with the minimal Host Adapter and no domain tools or writes |
+| `Level 0` | Direct embed with the minimal Host Adapter, enabled Essentials baseline, and no domain tools or writes |
 | `Level 1` | Declarative Host Integration Manifest using approved context, OpenAPI/JSON-Schema tools, generic renderers, and Action mappings |
 | `Level 2` | Development-time Integration Generator that produces a reviewable Manifest, adapters, fixtures, and unresolved-risk report |
 | `Level 3` | Optional custom Domain Plugin for complex validation, transactions, retrieval, renderers, services, or undo behavior |
@@ -122,7 +122,7 @@ Every level retains the Host Adapter authority boundary. Generated write mapping
 | `confirm_each` | Every business Action waits for user review and confirmation. This is the default. |
 | `auto_apply_allowlist` | Reviewed low-risk allowlisted Actions may apply automatically through Host validation, transaction, idempotency, audit, result visibility, and optional undo. |
 
-Automatic mode never gives the model direct database access. Delete, payment/transfer, external communication, private-data sharing, account or permission change, bulk or irreversible mutation, Attachment Promotion, Privacy deletion, ambiguous targets, low-confidence OCR/ASR, and Actions without approved compensation still require confirmation.
+Automatic mode never gives the model direct database access. Payments, transfers, and other dangerous capabilities remain unavailable in the MVP. Supported Actions for delete, external communication, private-data sharing, account or permission change, bulk or irreversible mutation, Attachment Promotion, ambiguous targets, low-confidence OCR/ASR, and operations without approved compensation still require confirmation. Privacy deletion uses its separate Privacy Job destructive-confirmation flow.
 
 Host Data Write Tools are a separate, default-disabled capability:
 
@@ -170,8 +170,8 @@ Privacy Center is part of the mandatory Safety & Governance baseline. It covers 
 
 A host can adopt Framed Assistant incrementally:
 
-1. Embed the default text assistant.
-2. Implement or configure the Host Adapter, choose an integration level, and enable deterministic Essentials tools.
+1. Embed the default text assistant with the minimal Host Adapter and enabled Essentials baseline.
+2. Add bounded Host context and choose an integration level for deterministic read-only tools.
 3. Enable the unified Attachment System for multi-image/file input, private processing, gallery preview, persisted voice-message, and editable live dictation.
 4. Select a context profile, then add configurable reasoning disclosure, tool activity, and Context Management as needed.
 5. Add retrieval, citations, and explicit Memory where appropriate.
@@ -183,7 +183,7 @@ No stage requires the host to surrender authorization or transaction control.
 
 - Tools declare input/output schemas, permissions, side-effect class, retry policy, and redaction rules.
 - Protected reads and external calls require host authorization.
-- Side effects pass through Action Workspace and are reauthorized immediately before confirmed or automatic application.
+- Host business mutations pass through Action Workspace and are reauthorized immediately before confirmed or automatic application; Privacy deletion uses the mandatory Privacy Job policy flow.
 - `auto_apply_allowlist` is deny-by-default, cannot be selected by the model, and records the reviewed policy decision for every automatic Action.
 - Host Data Write Tools are absent from the model manifest by default; raw SQL, table browsing, connection details, unrestricted predicates, undeclared fields, and out-of-scope rows are forbidden.
 - Committed actions require idempotency keys and audit records.

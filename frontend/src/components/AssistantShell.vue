@@ -1,6 +1,11 @@
 <script setup lang="ts">
 import { computed, onMounted, watch, type Component } from "vue";
 import type { AssistantApi } from "../api";
+import {
+  DEFAULT_COMPOSER_CAPABILITIES,
+  type ComposerCapabilities,
+  type ComposerToolbarPlacement,
+} from "../composer";
 import type { DictationAdapter } from "../dictation";
 import { DEFAULT_ASSISTANT_LABELS, type AssistantLabels } from "../labels";
 import { createAssistantStore } from "../store";
@@ -13,7 +18,9 @@ const props = withDefaults(
   defineProps<{
     api: AssistantApi;
     conversationId: string;
-    dictationAdapter: DictationAdapter;
+    dictationAdapter?: DictationAdapter;
+    composerCapabilities?: Partial<ComposerCapabilities>;
+    composerToolbarPlacement?: ComposerToolbarPlacement;
     title?: string;
     subtitle?: string;
     showSettings?: boolean;
@@ -26,6 +33,8 @@ const props = withDefaults(
     subtitle: "Framed by the Host",
     showSettings: true,
     labels: () => ({}),
+    composerCapabilities: () => ({}),
+    composerToolbarPlacement: "below",
   },
 );
 const emit = defineEmits<{ hostRefresh: [] }>();
@@ -34,6 +43,17 @@ const uiLabels = computed(() => ({
   ...DEFAULT_ASSISTANT_LABELS,
   ...props.labels,
 }));
+const resolvedComposerCapabilities = computed(() => {
+  const configured = {
+    ...DEFAULT_COMPOSER_CAPABILITIES,
+    ...props.composerCapabilities,
+  };
+  return {
+    ...configured,
+    liveDictation:
+      configured.liveDictation && props.dictationAdapter?.available === true,
+  };
+});
 
 watch(
   () => props.conversationId,
@@ -152,8 +172,11 @@ onMounted(() => store.loadConversation(props.conversationId));
       </div>
     </div>
     <Composer
+      :api="api"
       :store="store"
       :dictation-adapter="dictationAdapter"
+      :capabilities="resolvedComposerCapabilities"
+      :toolbar-placement="composerToolbarPlacement"
       :labels="uiLabels"
     />
   </main>

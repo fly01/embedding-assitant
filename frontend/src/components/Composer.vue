@@ -1,5 +1,10 @@
 <script setup lang="ts">
-import { ref } from "vue";
+import { computed, ref, watch } from "vue";
+import type { AssistantApi } from "../api";
+import type {
+  ComposerCapabilities,
+  ComposerToolbarPlacement,
+} from "../composer";
 import type { DictationAdapter } from "../dictation";
 import type { AssistantLabels } from "../labels";
 import type { AssistantStore } from "../store";
@@ -8,8 +13,11 @@ import LiveDictationControl from "./LiveDictationControl.vue";
 import VoiceRecorder from "./VoiceRecorder.vue";
 
 const props = defineProps<{
+  api: AssistantApi;
   store: AssistantStore;
-  dictationAdapter: DictationAdapter;
+  dictationAdapter?: DictationAdapter;
+  capabilities: ComposerCapabilities;
+  toolbarPlacement: ComposerToolbarPlacement;
   labels: AssistantLabels;
 }>();
 const text = ref("");
@@ -18,6 +26,15 @@ const dictationBase = ref("");
 const fileInput = ref<HTMLInputElement>();
 const cameraInput = ref<HTMLInputElement>();
 const voiceInput = ref<HTMLInputElement>();
+const liveDictationEnabled = computed(
+  () =>
+    props.capabilities.liveDictation &&
+    props.dictationAdapter?.available === true,
+);
+
+watch(liveDictationEnabled, (available) => {
+  if (!available && mode.value === "live_dictation") mode.value = "text";
+});
 
 async function submit(): Promise<void> {
   const value = text.value.trim();
@@ -65,17 +82,25 @@ function dictationFinal(finalText: string): void {
 function beginDictation(): void {
   dictationBase.value = text.value;
 }
+
+function selectMode(nextMode: "text" | "voice_message" | "live_dictation") {
+  mode.value = nextMode;
+  if (nextMode === "live_dictation") beginDictation();
+}
 </script>
 
 <template>
   <form
     class="composer"
+    :data-toolbar-placement="toolbarPlacement"
     @submit.prevent="submit"
     @dragover.prevent
     @drop.prevent="dropFiles"
   >
     <AttachmentTray
+      :api="api"
       :attachments="store.state.draftAttachments"
+      :labels="labels"
       @remove="store.removeAttachment"
       @move="store.moveAttachment"
       @retry="store.retryAttachment"
@@ -88,48 +113,13 @@ function beginDictation(): void {
       @keydown.enter.exact.prevent="submit"
       @paste="pasteFiles"
     />
-    <div class="composer-actions">
-      <button
-        type="button"
-        :aria-label="labels.attachFiles"
-        @click="fileInput?.click()"
-      >
-        ＋
-      </button>
-      <small>{{ labels.fileLimit }}</small>
-      <input
-        ref="fileInput"
-        class="visually-hidden"
-        type="file"
-        multiple
-        @change="selectFiles"
-      />
-      <button
-        type="button"
-        :aria-label="labels.takePhoto"
-        @click="cameraInput?.click()"
-      >
-        {{ labels.takePhoto }}
-      </button>
-      <input
-        ref="cameraInput"
-        class="visually-hidden"
-        type="file"
-        accept="image/*"
-        capture="environment"
-        @change="selectFiles"
-      />
-      <select
-        v-model="mode"
-        :aria-label="labels.inputMode"
-        @change="mode === 'live_dictation' && beginDictation()"
-      >
-        <option value="text">{{ labels.textMode }}</option>
-        <option value="voice_message">{{ labels.voiceMessageMode }}</option>
-        <option value="live_dictation">{{ labels.liveDictationMode }}</option>
-      </select>
+    <div v-if="mode !== 'text'" class="composer-mode-panel">
       <template v-if="mode === 'voice_message'">
-        <VoiceRecorder @recorded="addVoice" />
+        <VoiceRecorder
+          :start-label="labels.recordVoice"
+          :stop-label="labels.stopVoice"
+          @recorded="addVoice"
+        />
         <button type="button" @click="voiceInput?.click()">
           {{ labels.uploadAudio }}
         </button>
@@ -142,18 +132,98 @@ function beginDictation(): void {
         />
       </template>
       <LiveDictationControl
-        v-if="mode === 'live_dictation'"
+        v-else-if="mode === 'live_dictation' && dictationAdapter"
         :adapter="dictationAdapter"
+        :start-label="labels.startDictation"
+        :stop-label="labels.stopDictation"
+        :embedded-label="labels.embeddedDictation"
+        :api-label="labels.apiDictation"
         @partial="dictationPartial"
         @final="dictationFinal"
       />
+    </div>
+    <nav class="composer-tools" :aria-label="labels.inputTools">
       <button
-        class="send-button"
+        v-if="capabilities.attachments"
+        class="composer-tool"
+        type="button"
+        :aria-label="labels.attachFiles"
+        :title="`${labels.attachFiles} · ${labels.fileLimit}`"
+        @click="fileInput?.click()"
+      >
+        <span aria-hidden="true">＋</span>
+      </button>
+      <input
+        v-if="capabilities.attachments"
+        ref="fileInput"
+        class="visually-hidden"
+        type="file"
+        multiple
+        @change="selectFiles"
+      />
+      <button
+        v-if="capabilities.camera"
+        class="composer-tool"
+        type="button"
+        :aria-label="labels.takePhoto"
+        :title="labels.takePhoto"
+        @click="cameraInput?.click()"
+      >
+        <span aria-hidden="true">▣</span>
+      </button>
+      <input
+        v-if="capabilities.camera"
+        ref="cameraInput"
+        class="visually-hidden"
+        type="file"
+        accept="image/*"
+        capture="environment"
+        @change="selectFiles"
+      />
+      <button
+        class="composer-tool"
+        :class="{ active: mode === 'text' }"
+        type="button"
+        :aria-label="labels.textMode"
+        :aria-pressed="mode === 'text'"
+        :title="labels.textMode"
+        @click="selectMode('text')"
+      >
+        <span aria-hidden="true">T</span>
+      </button>
+      <button
+        v-if="capabilities.voiceMessage"
+        class="composer-tool"
+        :class="{ active: mode === 'voice_message' }"
+        type="button"
+        :aria-label="labels.voiceMessageMode"
+        :aria-pressed="mode === 'voice_message'"
+        :title="labels.voiceMessageMode"
+        @click="selectMode('voice_message')"
+      >
+        <span aria-hidden="true">●</span>
+      </button>
+      <button
+        v-if="liveDictationEnabled"
+        class="composer-tool"
+        :class="{ active: mode === 'live_dictation' }"
+        type="button"
+        :aria-label="labels.liveDictationMode"
+        :aria-pressed="mode === 'live_dictation'"
+        :title="labels.liveDictationMode"
+        @click="selectMode('live_dictation')"
+      >
+        <span aria-hidden="true">≈</span>
+      </button>
+      <button
+        class="composer-tool send-button"
         type="submit"
+        :aria-label="store.state.streaming ? labels.running : labels.send"
+        :title="store.state.streaming ? labels.running : labels.send"
         :disabled="store.state.streaming || !text.trim()"
       >
-        {{ store.state.streaming ? labels.running : labels.send }}
+        <span aria-hidden="true">↑</span>
       </button>
-    </div>
+    </nav>
   </form>
 </template>

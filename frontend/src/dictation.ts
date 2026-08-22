@@ -1,4 +1,6 @@
 export interface DictationAdapter {
+  readonly available: boolean;
+  readonly provider: "embedded_model" | "api";
   readonly location: "device" | "server";
   readonly retention: "ephemeral";
   start(onPartial: (text: string) => void): Promise<void>;
@@ -6,6 +8,8 @@ export interface DictationAdapter {
 }
 
 export class DemoDictationAdapter implements DictationAdapter {
+  readonly available = true;
+  readonly provider = "embedded_model";
   readonly location = "device";
   readonly retention = "ephemeral";
   private readonly text = "Plan a calm weekend trip";

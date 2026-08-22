@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref } from "vue";
 
+defineProps<{ startLabel: string; stopLabel: string }>();
 const emit = defineEmits<{ recorded: [file: File] }>();
 const recording = ref(false);
 let recorder: MediaRecorder;
@@ -38,18 +39,18 @@ async function stop(): Promise<void> {
   <button
     v-if="!recording"
     type="button"
-    aria-label="Start voice recording"
+    :aria-label="startLabel"
     @click="start"
   >
-    ● Record
+    ● {{ startLabel }}
   </button>
   <button
     v-else
     type="button"
     class="recording"
-    aria-label="Stop voice recording"
+    :aria-label="stopLabel"
     @click="stop"
   >
-    ■ Stop
+    ■ {{ stopLabel }}
   </button>
 </template>

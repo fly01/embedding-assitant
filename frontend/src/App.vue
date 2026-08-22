@@ -4,6 +4,7 @@ import { AssistantApi } from "./api";
 import AssistantShell from "./components/AssistantShell.vue";
 import MemoryPanel from "./components/MemoryPanel.vue";
 import PrivacyCenter from "./components/PrivacyCenter.vue";
+import type { ComposerToolbarPlacement } from "./composer";
 import { DemoDictationAdapter } from "./dictation";
 import type { Conversation, HostRecord } from "./types";
 
@@ -18,6 +19,7 @@ const conversationId = ref("");
 const hostRecords = ref<HostRecord[]>([]);
 const privacyOpen = ref(false);
 const memoryOpen = ref(false);
+const composerToolbarPlacement = ref<ComposerToolbarPlacement>("below");
 
 async function loadConversations(): Promise<void> {
   conversations.value = await api.listConversations();
@@ -61,6 +63,13 @@ onMounted(async () => {
           </option>
         </select>
         <button @click="createConversation">New conversation</button>
+        <select
+          v-model="composerToolbarPlacement"
+          aria-label="Composer toolbar placement"
+        >
+          <option value="below">Toolbar below</option>
+          <option value="side">Toolbar side</option>
+        </select>
         <button @click="memoryOpen = true">Memory</button>
         <button @click="privacyOpen = true">Privacy</button>
       </nav>
@@ -71,6 +80,7 @@ onMounted(async () => {
         :api="api"
         :conversation-id="conversationId"
         :dictation-adapter="dictationAdapter"
+        :composer-toolbar-placement="composerToolbarPlacement"
         @host-refresh="refreshRecords"
       />
       <aside class="host-records">

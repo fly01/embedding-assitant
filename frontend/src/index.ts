@@ -1,4 +1,9 @@
 export { AssistantApi, ApiError } from "./api";
+export {
+  DEFAULT_COMPOSER_CAPABILITIES,
+  type ComposerCapabilities,
+  type ComposerToolbarPlacement,
+} from "./composer";
 export { DemoDictationAdapter, type DictationAdapter } from "./dictation";
 export { DEFAULT_ASSISTANT_LABELS, type AssistantLabels } from "./labels";
 export { createAssistantStore, type AssistantStore } from "./store";

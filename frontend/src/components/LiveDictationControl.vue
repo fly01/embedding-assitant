@@ -2,7 +2,13 @@
 import { ref } from "vue";
 import type { DictationAdapter } from "../dictation";
 
-const props = defineProps<{ adapter: DictationAdapter }>();
+const props = defineProps<{
+  adapter: DictationAdapter;
+  startLabel: string;
+  stopLabel: string;
+  embeddedLabel: string;
+  apiLabel: string;
+}>();
 const emit = defineEmits<{ partial: [text: string]; final: [text: string] }>();
 const listening = ref(false);
 
@@ -20,26 +26,24 @@ async function stop(): Promise<void> {
 <template>
   <span class="dictation-control">
     <small>{{
-      adapter.location === "device"
-        ? "On-device"
-        : "Server · audio leaves device"
+      adapter.provider === "embedded_model" ? embeddedLabel : apiLabel
     }}</small>
     <button
       v-if="!listening"
       type="button"
-      aria-label="Start live dictation"
+      :aria-label="startLabel"
       @click="start"
     >
-      Dictate
+      {{ startLabel }}
     </button>
     <button
       v-else
       type="button"
       class="recording"
-      aria-label="Stop live dictation"
+      :aria-label="stopLabel"
       @click="stop"
     >
-      Stop dictation
+      {{ stopLabel }}
     </button>
   </span>
 </template>

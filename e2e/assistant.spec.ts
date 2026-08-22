@@ -104,6 +104,17 @@ test("streams a conversation while the Host owns conversation navigation", async
   await page.getByRole("button", { name: "Send" }).click();
   await expect(page.getByText("Sensitive provider trace")).toBeVisible();
   await expect(page.getByText("Activity · 1")).toBeVisible();
+
+  await page.getByLabel("Composer toolbar placement").selectOption("side");
+  await expect(page.locator(".composer")).toHaveAttribute(
+    "data-toolbar-placement",
+    "side",
+  );
+  expect(
+    await page
+      .locator(".composer-tools")
+      .evaluate((element) => getComputedStyle(element).flexDirection),
+  ).toBe("column");
 });
 
 test("keeps attachment, Lightbox, live dictation, and voice-message behavior consistent", async ({
@@ -125,6 +136,11 @@ test("keeps attachment, Lightbox, live dictation, and voice-message behavior con
     buffer: png,
   });
   await expect(page.getByText("pixel.png", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Preview pixel.png" }).click();
+  await expect(
+    page.getByRole("dialog", { name: "Attachment preview" }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Close preview" }).click();
   await page
     .getByRole("textbox", { name: "Message" })
     .fill("Review this image");
@@ -165,14 +181,14 @@ test("keeps attachment, Lightbox, live dictation, and voice-message behavior con
   );
   expect((await confirmed.json()).result.host_resource_ref).toBeTruthy();
 
-  await page.getByLabel("Input mode").selectOption("live_dictation");
+  await page.getByRole("button", { name: "Live dictation" }).click();
   await page.getByRole("button", { name: "Start live dictation" }).click();
   await page.getByRole("button", { name: "Stop live dictation" }).click();
   await expect(page.getByRole("textbox", { name: "Message" })).toHaveValue(
     "Plan a calm weekend trip",
   );
 
-  await page.getByLabel("Input mode").selectOption("voice_message");
+  await page.getByRole("button", { name: "Voice message" }).click();
   await page.locator('input[type="file"][accept="audio/*"]').setInputFiles({
     name: "voice.webm",
     mimeType: "audio/webm",

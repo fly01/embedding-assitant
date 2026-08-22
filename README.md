@@ -121,6 +121,23 @@ The `labels` prop accepts typed partial overrides for Host localization while pr
 />
 ```
 
+Composer tools use one configurable button toolbar. `below` is the horizontal default; `side` creates a vertical rail:
+
+```vue
+<AssistantShell
+  composer-toolbar-placement="below"
+  :composer-capabilities="{
+    attachments: true,
+    camera: true,
+    voiceMessage: true,
+    liveDictation: true
+  }"
+  :dictation-adapter="configuredDictationAdapter"
+/>
+```
+
+Live dictation is rendered only when the Host passes an available embedded-model or API `DictationAdapter`. Omitting the adapter omits the control. Selected images render as compact clickable thumbnails and open the authorized Lightbox before send; selected files use bounded previewable cards.
+
 To use an OpenAI-compatible Chat Completions endpoint:
 
 ```bash

@@ -8,6 +8,12 @@
 - Scope: minimum viable public framework specification intended for open-source release
 - Intended audience: framework maintainers, Host integration authors, application developers, plugin authors, UI contributors, and reviewers
 
+## Revision history
+
+- 2026-08-22 — `COMPOSER-TOOLBAR-01`: replaced the input-mode select with one configurable `below` or `side` Composer toolbar containing text, attachment, camera, voice-message, available live-dictation, and send controls.
+- 2026-08-22 — `LIVE-DICTATION-GATE-01`: made live dictation capability-gated; the default UI MUST NOT render it without an available Host-provided embedded-model or API `DictationAdapter`.
+- 2026-08-22 — `DRAFT-ATTACHMENT-02`: made Draft Attachments compact and previewable with image thumbnails, bounded file cards, on-demand authorized preview, and small reorder/remove/retry controls.
+
 This document defines the public MVP contract for Framed Assistant. It describes observable behavior, stable interfaces, module boundaries, conformance requirements, and release criteria. It does not prescribe private deployment details or a domain-specific data model.
 
 ## Abstract
@@ -551,15 +557,33 @@ Custom Domain Plugins are optional and are installed at release time through the
 
 **Purpose:** provide an opinionated interface that is ready to ship and remains themeable.
 
-Required components include `AssistantShell`, `ConversationThread`, `MessageTimeDivider`, `UserMessage`, `AssistantMessage`, `StreamingMarkdown`, `ThinkingDisclosure`, `ToolActivity`, `Composer`, `AttachmentTray`, `AttachmentGrid`, `AttachmentFileCard`, `AttachmentProcessingStatus`, `AttachmentLightbox`, `VoiceMessageBubble`, `LiveDictationControl`, `TranscriptionStatus`, `ActionCard`, `AutoAppliedResultCard`, `ExecutionModeSettings`, `HostDataToolSettings`, `CitationList`, `PrivacyCenter`, `PrivacyJobStatus`, `ErrorBanner`, `StopButton`, `RegenerateButton`, generic content renderer slots, and `action_type`-keyed Action renderer slots.
+Required components include `AssistantShell`, `ConversationThread`, `MessageTimeDivider`, `UserMessage`, `AssistantMessage`, `StreamingMarkdown`, `ThinkingDisclosure`, `ToolActivity`, `Composer`, `ComposerToolbar`, `AttachmentTray`, `AttachmentGrid`, `AttachmentFileCard`, `AttachmentProcessingStatus`, `AttachmentLightbox`, `VoiceMessageBubble`, `LiveDictationControl`, `TranscriptionStatus`, `ActionCard`, `AutoAppliedResultCard`, `ExecutionModeSettings`, `HostDataToolSettings`, `CitationList`, `PrivacyCenter`, `PrivacyJobStatus`, `ErrorBanner`, `StopButton`, `RegenerateButton`, generic content renderer slots, and `action_type`-keyed Action renderer slots.
 
-**Acceptance:** panel, drawer, inline, and full-page modes work at mobile and desktop widths; the Host can set Shell title/subtitle, typed user-facing labels, and size through public props and theme variables, and can hide maintainer settings from ordinary users without changing their configured values; English defaults remain complete when no label overrides are supplied; the published Vue package exposes one documented default stylesheet import and contains library artifacts rather than Reference Host application assets; fallback component layout selectors are scoped to their component root and MUST NOT alter Host-provided content or Action renderers; Host-driven active-Conversation changes rebind the thread without adding framework-owned navigation; keyboard and screen-reader paths cover every operation; chronology, multimodal flows, both voice modes, Privacy Center, tool visibility, six disclosure levels, and `raw_trace` availability remain consistent.
+**Acceptance:** panel, drawer, inline, and full-page modes work at mobile and desktop widths; the Host can set Shell title/subtitle, typed user-facing labels, and size through public props and theme variables, and can hide maintainer settings from ordinary users without changing their configured values; `ComposerToolbar` renders text, enabled attachment/camera/voice capabilities, capability-gated live dictation, and send as one button group placed below the text field or vertically beside it; English defaults remain complete when no label overrides are supplied; the published Vue package exposes one documented default stylesheet import and contains library artifacts rather than Reference Host application assets; fallback component layout selectors are scoped to their component root and MUST NOT alter Host-provided content or Action renderers; Host-driven active-Conversation changes rebind the thread without adding framework-owned navigation; keyboard and screen-reader paths cover every operation; chronology, multimodal flows, both voice modes, Privacy Center, tool visibility, six disclosure levels, and `raw_trace` availability remain consistent.
 
 ### M7. Multimodal Input Pack
 
 **Purpose:** standardize image, voice, and file input across hosts.
 
 **Responsibilities:** Attachment Asset creation, image/file selection, camera, paste and drag/drop, Draft Attachment Tray, append/replace policy, ordering, validation, optimization, private upload, processing, retry, message rendering, gallery preview, provenance, explicit Host promotion, voice permission, waveform, timer, cancel, batch and streaming transcription, editable dictation drafts, playable voice-message audio, transcript status, and attachment lifecycle. OCR, vision, document extraction, structured parsing, batch ASR, streaming ASR, and on-device ASR are adapter interfaces rather than fixed providers.
+
+Composer capability configuration is:
+
+```yaml
+composer:
+  toolbar_placement: below | side
+  tools:
+    attachment: true
+    camera: true
+    text: true
+    voice_message: true
+    live_dictation:
+      enabled: true
+      adapter: embedded_model | api
+    send: true
+```
+
+`below` is the default and renders one horizontal toolbar below the text field. `side` renders the same ordered controls vertically beside the text field. Text and send are baseline controls. Attachment, camera, and voice message follow declared Host capabilities. `live_dictation` is visible only when an enabled `DictationAdapter.available` declaration identifies an `embedded_model` or `api` provider; configuration without an available adapter is invalid for presentation, and the UI MUST omit the control rather than render a disabled or non-functional option. Demo adapters are development fixtures and MUST NOT activate production UI.
 
 Minimum Attachment Asset state is:
 
@@ -620,7 +644,7 @@ selected -> validating -> optimizing -> ready_to_upload -> uploading -> uploaded
 uploaded -> processing -> ready | partial | failed | unsupported | blocked
 ```
 
-Validation, optimization, upload, processing, and model availability are independent states. The Composer Tray remains inside the Composer above the text field, hides when empty, preserves stable selection order, exposes per-item progress/error/retry/removal, and shares the same state with an expanded Composer.
+Validation, optimization, upload, processing, and model availability are independent states. The Composer Tray remains inside the Composer above the text field, hides when empty, preserves stable selection order, exposes per-item progress/error/retry/removal, and shares the same state with an expanded Composer. Draft image items use bounded thumbnails with compact filename/status overlays; Draft non-image items use bounded file cards with truncated names, size and status. Every authorized Draft item is one labelled preview control: images open `AttachmentLightbox`, while previewable files open the Host-authorized Preview endpoint. Large raw filenames or status text MUST NOT expand the Composer or replace the text field.
 
 Every sent attachment belongs to one parent Message and shares that Message's ordering, time group, delivery state, retry surface, and privacy scope. Text and attachments MAY use separate visual blocks but MUST NOT become unrelated timeline Messages. User messages default to ordered attachments above text; assistant-generated artifacts default below explanatory text, with explicit `ContentPart.order` remaining authoritative.
 
@@ -645,11 +669,11 @@ voice_input:
 
 `voice_message` records and sends a playable audio Message. The audio uploads through private Host-authorized storage, the Message becomes visible with duration and playback state, and a backend batch-ASR adapter produces a derived transcript before the assistant Run consumes text. The original audio is authoritative user content and follows Host retention and deletion policy; the transcript stores its source audio ID, language, adapter/version, confidence when available, status, and revision. A user correction creates a new transcript revision without erasing the automatic transcript. A correction made after an assistant response requires an explicit regenerate operation and MUST NOT replay prior non-idempotent work. Transcription failure leaves the audio Message readable and retryable and MUST NOT fabricate text or silently start the assistant Run.
 
-`live_dictation` streams partial ASR into the Composer and continuously replaces only the current dictation suffix. It MAY use an on-device model or an explicitly disclosed server streaming fallback. Stopping leaves editable text and never sends automatically. On-device failure MUST be disclosed before any server upload. Live-dictation audio is ephemeral by default and is not stored as a Message.
+`live_dictation` streams partial ASR into the Composer and continuously replaces only the current dictation suffix. It requires an available Host-provided embedded/on-device ASR model adapter or an explicitly configured server API adapter. Stopping leaves editable text and never sends automatically. On-device failure MUST be disclosed before any server upload and MUST NOT silently reveal an API control that was not configured. Live-dictation audio is ephemeral by default and is not stored as a Message.
 
 An ASR adapter declares `batch`, `streaming`, or both; execution location `device` or `server`; accepted formats; languages; partial-result support; and retention behavior. If both modes are enabled, the Host provides an explicit mode switch or distinct gestures and persists the user preference only when permitted.
 
-**Acceptance:** selecting multiple attachments uses one Tray above the text field, appends by default, preserves/reorders stable order, enforces the visible limit before send, and supports per-item removal/retry; image/file upload failure preserves the text draft and Draft Attachments; sent text plus attachments remain one Message; every authorized image opens the Lightbox and every unavailable source explains why; upload, processing, and Run failures remain distinguishable; required processing failure pauses for user choice; historical replay uses stable private Attachment IDs; Attachment Promotion requires a confirmed Action with visible source references. Voice-message upload and transcription have independent retry states; voice messages remain playable when transcription fails; the assistant consumes only a completed or user-corrected transcript; live dictation preserves partial text on recoverable failure; neither mode silently changes execution location; frontend and backend enforce the same audio type, duration, size, and privacy policy.
+**Acceptance:** selecting multiple attachments uses one compact Tray above the text field, appends by default, preserves/reorders stable order, enforces the visible limit before send, and supports per-item preview/removal/retry; selected images render bounded thumbnails and open the Lightbox before send, selected files remain bounded and open an authorized Preview when supported; image/file upload failure preserves the text draft and Draft Attachments; sent text plus attachments remain one Message; every authorized image opens the Lightbox and every unavailable source explains why; upload, processing, and Run failures remain distinguishable; required processing failure pauses for user choice; historical replay uses stable private Attachment IDs; Attachment Promotion requires a confirmed Action with visible source references. Voice-message upload and transcription have independent retry states; voice messages remain playable when transcription fails; the assistant consumes only a completed or user-corrected transcript; live dictation preserves partial text on recoverable failure and is absent without an available embedded-model/API adapter; neither mode silently changes execution location; frontend and backend enforce the same audio type, duration, size, and privacy policy.
 
 ### M8. Context Management Pack
 
@@ -861,7 +885,8 @@ The Host sets the maximum permitted level; an authorized viewer MAY select any l
 Minimum behavior:
 
 - preserve user drafts across recoverable failures;
-- keep one `AttachmentTray` inside the Composer above the text field, append repeated selections by default, show the configured limit before selection/send, preserve stable order, and expose per-item progress, retry, removal, and reorder controls;
+- keep one compact `AttachmentTray` inside the Composer above the text field, append repeated selections by default, show the configured limit before selection/send, preserve stable order, and expose per-item preview, progress, retry, removal, and reorder controls without enlarging the Composer around raw filenames;
+- render text, enabled attachment/camera/voice capabilities, available live dictation, and send in one `ComposerToolbar`; apply the Host's `below` horizontal or `side` vertical placement without changing capability semantics;
 - distinguish history loading, sending, streaming, tool execution, upload, transcription, and action application;
 - auto-follow streaming only while the user remains at the bottom;
 - preserve the reading anchor when older history is prepended;
@@ -1140,12 +1165,13 @@ Conformance is evidence-based and modular. Passing one module suite permits a cl
 | --- | --- | --- |
 | Text conversation | M0, M1, M5, M6 | persisted input, streamed output, completed run |
 | Read-only tool | M0, M1, M3, M6, M12 | visible lifecycle, authorized execution, validated output |
-| Multi-attachment composition | M0, M5, M6, M7 | three images and one file append in one Tray above text, preserve order, support removal/reorder, and send as one Message |
+| Multi-attachment composition | M0, M5, M6, M7 | three images and one file append in one compact Tray above text, preserve order, support pre-send preview/removal/reorder, and send as one Message |
 | Attachment processing failure | M1, M5, M6, M7, M12 | draft/upload is not lost, upload/parse/Run failures remain distinct, required failure pauses for retry/remove-and-continue/cancel |
 | Attachment history and gallery | M0, M5, M6, M7, M12 | stable private IDs survive pagination, thumbnails open the authorized Message gallery, unavailable sources show labelled tombstones |
 | Attachment-derived Action | M0, M7, M11, M12 | source file/page/region provenance and Promotion targets are visible before confirmation; Host resource is created only after confirmation |
 | Voice message | M0, M1, M5, M6, M7, M12 | private playable audio persists, batch transcript completes before assistant consumption, failure remains retryable |
-| Live dictation | M5, M6, M7, M12 | on-device or disclosed server streaming fills an editable draft, never auto-sends, and retains no audio Message |
+| Live dictation | M5, M6, M7, M12 | an available embedded-model or API adapter makes the toolbar control visible; no adapter means no control; streaming fills an editable draft, never auto-sends, and retains no audio Message |
+| Composer toolbar placement | M5, M6, M7 | the same enabled tools render as one horizontal group below the text field or one vertical group beside it without overlap, mode select menus, or hidden send controls |
 | Message time grouping | M0, M5, M6 | sequence order remains stable, continuous messages share one time anchor, five-minute/date boundaries create localized dividers, pagination recomputes without jump |
 | Long single Conversation | M1, M8, M13 | selected profile compiles a bounded Context View, original history remains unchanged, Manifest explains inclusion and exclusion |
 | Multiple Conversation continuity | M1, M5, M8, M10, M12 | Host-driven `conversation_id` changes isolate thread/draft/context state; authorized cross-conversation Memory and on-demand history retrieval retain provenance without leaking other scopes |
@@ -1173,7 +1199,7 @@ The MVP is complete when:
 - [ ] M0 schemas are frozen at `0.1` and the conformance command passes.
 - [ ] M1-M14 satisfy their module acceptance requirements.
 - [ ] A representative host embeds the default UI through a real Host Adapter.
-- [ ] Text, multi-image/file Attachment Tray, private upload/processing/retry, one-Message rendering, image Lightbox, file cards, explicit Attachment Promotion, persisted voice-message with backend transcript, and live editable dictation flows work.
+- [ ] Text, configurable below/side Composer Toolbar, compact previewable multi-image/file Attachment Tray, private upload/processing/retry, one-Message rendering, image Lightbox, file cards, explicit Attachment Promotion, persisted voice-message with backend transcript, and capability-gated live editable dictation flows work.
 - [ ] Streaming Markdown, all six disclosure levels, tool activity, citations, and Action cards render through public contracts.
 - [ ] A `Level 1` Host Integration Manifest contributes a tool plus confirmed and allowlisted automatic Actions without custom plugin code.
 - [ ] Host Data Write Tools are absent by default; an approved Manifest can enable scoped create/update/upsert/delete/link/unlink tools without exposing raw SQL or unrestricted database access.

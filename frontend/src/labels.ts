@@ -3,6 +3,7 @@ export interface AssistantLabels {
   messageInput: string;
   messagePlaceholder: string;
   attachFiles: string;
+  inputTools: string;
   fileLimit: string;
   takePhoto: string;
   inputMode: string;
@@ -10,6 +11,18 @@ export interface AssistantLabels {
   voiceMessageMode: string;
   liveDictationMode: string;
   uploadAudio: string;
+  recordVoice: string;
+  stopVoice: string;
+  startDictation: string;
+  stopDictation: string;
+  embeddedDictation: string;
+  apiDictation: string;
+  selectedAttachments: string;
+  previewAttachment: string;
+  removeAttachment: string;
+  moveAttachmentEarlier: string;
+  moveAttachmentLater: string;
+  retryAttachment: string;
   send: string;
   running: string;
   stop: string;
@@ -21,6 +34,7 @@ export const DEFAULT_ASSISTANT_LABELS: AssistantLabels = {
   messageInput: "Message",
   messagePlaceholder: "Ask the assistant…",
   attachFiles: "Attach files",
+  inputTools: "Input tools",
   fileLimit: "8 files · 50 MiB total",
   takePhoto: "Camera",
   inputMode: "Input mode",
@@ -28,6 +42,18 @@ export const DEFAULT_ASSISTANT_LABELS: AssistantLabels = {
   voiceMessageMode: "Voice message",
   liveDictationMode: "Live dictation",
   uploadAudio: "Upload audio",
+  recordVoice: "Record voice message",
+  stopVoice: "Stop recording",
+  startDictation: "Start live dictation",
+  stopDictation: "Stop live dictation",
+  embeddedDictation: "On-device model",
+  apiDictation: "Server API · audio leaves device",
+  selectedAttachments: "{count} selected attachments",
+  previewAttachment: "Preview {name}",
+  removeAttachment: "Remove {name}",
+  moveAttachmentEarlier: "Move {name} earlier",
+  moveAttachmentLater: "Move {name} later",
+  retryAttachment: "Retry {name}",
   send: "Send",
   running: "Running…",
   stop: "Stop",

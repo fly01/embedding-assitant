@@ -4,7 +4,7 @@ import asyncio
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, Form, Query, Request, UploadFile
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse, Response, StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
 
 from .actions import ActionService
@@ -41,23 +41,23 @@ router = APIRouter(prefix="/v1/assistant")
 
 
 def store(request: Request) -> Store:
-    return request.app.state.store
+    return request.app.state.framed_assistant.store
 
 
 def runtime(request: Request) -> AssistantRuntime:
-    return request.app.state.runtime
+    return request.app.state.framed_assistant.runtime
 
 
 def attachments(request: Request) -> AttachmentService:
-    return request.app.state.attachments
+    return request.app.state.framed_assistant.attachments
 
 
 def actions(request: Request) -> ActionService:
-    return request.app.state.actions
+    return request.app.state.framed_assistant.actions
 
 
 def privacy(request: Request) -> PrivacyService:
-    return request.app.state.privacy
+    return request.app.state.framed_assistant.privacy
 
 
 Host = Annotated[HostContext, Depends(host_context)]
@@ -75,7 +75,7 @@ def create_conversation(
     host: Host,
     repository: StoreDependency,
 ) -> Conversation:
-    if request.app.state.settings.conversation_mode == "single" and any(
+    if request.app.state.framed_assistant.settings.conversation_mode == "single" and any(
         conversation.status == "active" for conversation in repository.list_conversations(host)
     ):
         raise ConflictError("Single mode already has an active Conversation in this Host scope")
@@ -354,9 +354,10 @@ def update_memory(
     return repository.update_memory(host, memory_id, body.content)
 
 
-@router.delete("/memory/{memory_id}", status_code=204)
-def delete_memory(memory_id: str, host: Host, repository: StoreDependency) -> None:
+@router.delete("/memory/{memory_id}", status_code=204, response_class=Response)
+def delete_memory(memory_id: str, host: Host, repository: StoreDependency) -> Response:
     repository.delete_memory(host, memory_id)
+    return Response(status_code=204)
 
 
 @router.post("/knowledge", response_model=KnowledgeDocument, status_code=201)
@@ -515,15 +516,16 @@ def generate_integration(body: GeneratorRequest):
 
 @router.get("/capabilities")
 def capabilities(request: Request, repository: StoreDependency):
-    manifest = request.app.state.manifest
+    assistant = request.app.state.framed_assistant
+    manifest = assistant.manifest
     return {
         "schema_version": "0.1",
         "conversation_modes": ["single", "multiple"],
-        "active_conversation_mode": request.app.state.settings.conversation_mode,
+        "active_conversation_mode": assistant.settings.conversation_mode,
         "context_profiles": ["lite", "balanced", "durable"],
         "execution_modes": ["read_only", "confirm_each", "auto_apply_allowlist"],
         "disclosure_levels": ["hidden", "status", "contextual", "activity", "developer", "raw_trace"],
         "host_data_tools": manifest.host_data_tools.model_dump(),
         "plugins": [plugin.model_dump(mode="json") for plugin in repository.list_plugins()],
-        "tools": request.app.state.tools.definitions(),
+        "tools": assistant.tools.definitions(),
     }

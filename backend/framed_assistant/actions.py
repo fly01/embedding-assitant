@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from .errors import ConflictError, NotFoundError
-from .host import ReferenceHostAdapter
+from .host import HostAdapter
 from .models import ActionState, ExecutionMode, HostContext, PendingAction
 from .policy import PolicyEngine
 from .store import Store
@@ -21,7 +21,7 @@ class ActionService:
         self,
         store: Store,
         policy: PolicyEngine,
-        host_adapter: ReferenceHostAdapter,
+        host_adapter: HostAdapter,
     ):
         self.store = store
         self.policy = policy
@@ -141,8 +141,8 @@ class ActionService:
         undoing = self.store.update_action(action.id, state=ActionState.UNDOING)
         self._emit(undoing, "action.updated")
         try:
-            result = self.store.undo_host_record_action(host, undoing)
-        except ConflictError as error:
+            result = self.host_adapter.undo_action(host, undoing)
+        except (ConflictError, NotFoundError) as error:
             failed = self.store.update_action(
                 action.id,
                 state=ActionState.UNDO_FAILED,

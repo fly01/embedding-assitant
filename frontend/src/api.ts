@@ -29,6 +29,7 @@ export class AssistantApi {
     readonly baseUrl: string,
     readonly actorId: string,
     readonly scopeKey: string,
+    readonly pageContext: () => Record<string, unknown> = () => ({}),
   ) {}
 
   async listConversations(): Promise<Conversation[]> {
@@ -266,14 +267,23 @@ export class AssistantApi {
   }
 
   private authHeaders(): Record<string, string> {
-    return { "X-Actor-ID": this.actorId, "X-Scope-Key": this.scopeKey };
+    return {
+      "X-Actor-ID": this.actorId,
+      "X-Scope-Key": this.scopeKey,
+      "X-Page-Context": JSON.stringify(this.pageContext()),
+    };
   }
 
   private async error(response: Response): Promise<ApiError> {
     const payload = (await response.json()) as {
-      message: string;
-      code: string;
+      message?: string;
+      detail?: string;
+      code?: string;
     };
-    return new ApiError(payload.message, response.status, payload.code);
+    return new ApiError(
+      payload.message ?? payload.detail ?? response.statusText,
+      response.status,
+      payload.code ?? `http_${response.status}`,
+    );
   }
 }

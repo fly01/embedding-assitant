@@ -10,7 +10,7 @@ from typing import Any, Protocol
 import httpx
 
 from .context import ContextView
-from .models import Attachment, DisclosureLevel, Message
+from .models import Attachment, DisclosureLevel, HostContext, Message
 
 
 class ProviderError(RuntimeError):
@@ -30,6 +30,7 @@ class ModelProvider(Protocol):
     async def generate(
         self,
         *,
+        host: HostContext,
         context: ContextView,
         user_text: str,
         attachments: list[Attachment],
@@ -54,6 +55,7 @@ class MockModelProvider:
     async def generate(
         self,
         *,
+        host: HostContext,
         context: ContextView,
         user_text: str,
         attachments: list[Attachment],
@@ -185,6 +187,7 @@ class OpenAICompatibleProvider:
     async def generate(
         self,
         *,
+        host: HostContext,
         context: ContextView,
         user_text: str,
         attachments: list[Attachment],

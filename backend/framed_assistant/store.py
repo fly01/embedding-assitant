@@ -64,16 +64,6 @@ class Store:
     def initialize(self) -> None:
         self.database.initialize()
         self.attachments_dir.mkdir(parents=True, exist_ok=True)
-        self.register_plugin(
-            PluginState(
-                id="sample.records",
-                version="0.1.0",
-                protocol_range=">=0.1.0 <0.2.0",
-                data_schema_version="1",
-                enabled=True,
-                capabilities=["records.read", "records.propose"],
-            )
-        )
 
     # Conversations and messages
 

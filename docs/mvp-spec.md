@@ -67,7 +67,8 @@ The MVP does not include:
 | --- | --- |
 | Core | The protocol and runtime behavior shared by every host. |
 | Host application | The product embedding Framed Assistant. It owns identity, data, authorization, validation, and committed writes. |
-| Host Adapter | The bounded interface through which the framework requests identity, context, authorization, media access, and action execution. |
+| Host Adapter | The bounded interface through which the framework requests identity, per-Run context, authorization, media access, Action execution, undo, and refresh. |
+| Run Host Context | Immutable actor, Host scope, denied-permission set, and validated page context captured when a Run starts and passed to the Context Compiler, Provider, tools, and Host Adapter. |
 | Conversation | An ordered, persistent set of messages within one host-defined scope. |
 | Run | One execution initiated by a user message, including model output, tool calls, events, and completion state. |
 | Tool | A typed capability callable by the runtime. A tool cannot directly exceed its declared permissions or side-effect class. |
@@ -378,6 +379,8 @@ The protocol is transport-neutral. The reference server exposes:
 
 The reference implementation uses Server-Sent Events for run events. A run request MUST persist the user message before model execution and return `run_id` plus the latest sequence number. Clients resume with `after_seq`.
 
+The reference transport accepts validated page state through `X-Page-Context` JSON. A Host integration MAY use another transport, but it MUST capture one immutable Run Host Context before compilation and MUST NOT let the model expand that context or resolve private Attachments outside its actor/scope.
+
 In `multiple` mode, these collection and patch endpoints support Host-owned navigation; they are not default assistant UI. Conversation deletion uses the scoped Privacy deletion preview and job flow rather than a direct transport delete.
 
 ### Error model
@@ -438,9 +441,11 @@ All modules except M0 build against M0 contracts. Every module MUST provide its 
 
 **Purpose:** execute one assistant run consistently across hosts.
 
-**Responsibilities:** conversation and run lifecycle, message persistence, Context View compilation through the configured profile, model invocation, event emission, cancellation, retry, regeneration, reconciliation, and usage recording. MVP adapters are OpenAI-compatible and Mock.
+The Python reference distribution exposes `EmbeddedAssistant.create(...).mount(app)` as its supported FastAPI embedding path.
 
-**Acceptance:** user input is persisted before provider access; the runtime invokes capabilities only through M3; interrupted streams reconcile from persisted events; non-idempotent operations are never replayed automatically; adapters report reasoning visibility accurately; raw trace events are emitted only when both provider support and Host policy allow them.
+**Responsibilities:** conversation and run lifecycle, message persistence, immutable Run Host Context capture, Context View compilation, model invocation, event emission, cancellation, retry, regeneration, reconciliation, usage recording, and one public backend mount surface that installs namespaced services without taking over unrelated Host application state. Providers receive the authorized Host Context so Host-specific adapters can resolve private Attachment bytes without widening scope. MVP adapters are OpenAI-compatible and Mock.
+
+**Acceptance:** user input is persisted before provider access; a Host can create and mount the backend runtime through one supported entry point; the mount composes rather than replaces the Host lifespan and registers no deprecated startup handler; every published route loads under the declared minimum FastAPI version, including explicit empty-body semantics for `204` responses; mounted services live under a framework-namespaced Host state key; the runtime invokes capabilities only through M3; interrupted streams reconcile from persisted events; non-idempotent operations are never replayed automatically; adapters report reasoning visibility accurately; raw trace events are emitted only when both provider support and Host policy allow them.
 
 ### M2. Host Integration Bridge
 
@@ -452,21 +457,24 @@ All modules except M0 build against M0 contracts. Every module MUST provide its 
 interface AssistantHostAdapter {
   getActor(): Promise<ActorContext>;
   getConversationScope(): Promise<ConversationScope>;
-  getPageContext(scope: PageContextScope): Promise<PageContext>;
+  getPageContext(context: RunHostContext): Promise<PageContext>;
   getDataToolCapabilities?(): Promise<HostDataToolCatalog>;
   authorize(request: PermissionRequest): Promise<PermissionDecision>;
   applyAction(action: ExecutableAction): Promise<ActionApplyResult>;
+  undoAction?(action: AppliedAction): Promise<ActionUndoResult>;
   refreshData?(result: ActionApplyResult): Promise<void>;
 }
 ```
 
 `ExecutableAction` can be created only after a positive immutable `ActionPolicyDecision` records either explicit user confirmation or reviewed `auto_apply_allowlist` authorization. The model cannot construct this boundary type directly.
 
-**Acceptance:** missing capabilities are reported as disabled; the Host supplies a stable Conversation scope; denied permissions produce structured results; page context has a field allowlist and size budget; any Host data capability catalog is constrained by the approved Integration Manifest and current actor scope; Action application and refresh are explicit, testable callbacks; a `Level 1` application can implement the boundary through an approved Host Integration Manifest without custom Domain Plugin code.
+**Acceptance:** missing capabilities are reported as disabled; the Host supplies stable actor/Conversation scope and a validated immutable page-context snapshot; denied permissions produce structured results; Providers can resolve private media only through that Host Context; any Host data catalog is constrained by the approved Manifest and actor scope; apply/undo/refresh are explicit testable Host callbacks; the default shell requests a Host refresh after both apply and undo; custom authentication is installed through the supported mount entry point; Level 1 works without custom Plugin code.
 
 ### M3. Tool Runtime and Essentials Pack
 
 **Purpose:** register, discover, validate, authorize, execute, and audit typed tools.
+
+The embedded runtime registers only domain-neutral Essentials by default. Reference-Host, knowledge-source, generated, and domain tools require explicit Host registration and MUST NOT appear in another Host's capability manifest merely because the framework package is mounted.
 
 ```ts
 interface ToolManifest {
@@ -519,7 +527,7 @@ The Host data adapter maps an approved Action to a parameterized repository/API 
 
 Essentials includes date/time/time-zone operations, a calculator, unit conversion, number and currency formatting, text cleanup, and bounded host page context. Currency exchange requires a caller-supplied rate; live rates belong to retrieval or a host plugin.
 
-**Acceptance:** invalid input never executes; invalid output becomes a typed tool failure; automatic retry is limited to deterministic or read-only operations; default tools do not write business data or access the network. Host Data Write Tools are absent from model manifests by default; enabling one entity/operation exposes only its reviewed schema and scope; every call becomes an Action; raw SQL and undeclared fields/rows remain impossible; conflicts and policy misses do not mutate Host data.
+**Acceptance:** invalid input never executes; invalid output becomes a typed tool failure; automatic retry is limited to deterministic or read-only operations; default tools do not write business data or access the network; a newly embedded Host advertises no reference-Host tools. Host Data Write Tools are absent from model manifests by default; enabling one entity/operation exposes only its reviewed schema and scope; every call becomes an Action; raw SQL and undeclared fields/rows remain impossible; conflicts and policy misses do not mutate Host data.
 
 ### M4. Integration and Plugin System
 
@@ -527,7 +535,7 @@ Essentials includes date/time/time-zone operations, a calculator, unit conversio
 
 Custom Domain Plugins are optional and are installed at release time through the Host build or package manager. Installed plugins MAY be enabled or disabled at runtime through Host configuration. The MVP MUST NOT download or execute arbitrary remote plugin code.
 
-**Responsibilities:** Integration Manifest and Plugin Manifest validation, protocol compatibility, dependency checks, review state, unresolved-risk gates, permissions, configuration, Privacy handlers, renderer registration, enable/disable state, and fail-closed activation.
+**Responsibilities:** Integration Manifest and Plugin Manifest validation, protocol compatibility, dependency checks, review state, unresolved-risk gates, permissions, configuration, Privacy handlers, explicit renderer registration, enable/disable state, and fail-closed activation. Core storage MUST NOT auto-register reference or sample plugins.
 
 **Acceptance:** draft or unresolved Integrations do not activate writes; privacy-incomplete or incompatible plugins do not activate; disabled plugins expose no new tools or Actions; renderer failure uses a generic fallback; historical content remains readable. v0.1 rejects plugin versions that require plugin-owned data migration rather than orchestrating that migration.
 
@@ -537,15 +545,15 @@ Custom Domain Plugins are optional and are installed at release time through the
 
 **Responsibilities:** conversation state, event replay, sequence-based ordering, derived time dividers, pagination, drafts, ordered Draft Attachments, per-attachment validation/optimization/upload/processing state, gallery focus, attachment retry/removal, voice-mode state, disclosure level, thinking status, reasoning summaries, provider trace state, tool activity, citations, Action state, cancellation, retry, and reconnection.
 
-**Acceptance:** the package renders no UI; all state is serializable; reducers handle duplicate events and interrupted streams; an application can replace every visible component while preserving behavior.
+**Acceptance:** the package renders no UI; all state is serializable; reducers handle duplicate events, interrupted streams, and terminal `run.failed` errors; framework error envelopes and standard Host HTTP `detail` errors produce non-empty client errors; an application can replace every visible component while preserving behavior.
 
 ### M6. Default Frontend UI Components
 
 **Purpose:** provide an opinionated interface that is ready to ship and remains themeable.
 
-Required components include `AssistantShell`, `ConversationThread`, `MessageTimeDivider`, `UserMessage`, `AssistantMessage`, `StreamingMarkdown`, `ThinkingDisclosure`, `ToolActivity`, `Composer`, `AttachmentTray`, `AttachmentGrid`, `AttachmentFileCard`, `AttachmentProcessingStatus`, `AttachmentLightbox`, `VoiceMessageBubble`, `LiveDictationControl`, `TranscriptionStatus`, `ActionCard`, `AutoAppliedResultCard`, `ExecutionModeSettings`, `HostDataToolSettings`, `CitationList`, `PrivacyCenter`, `PrivacyJobStatus`, `ErrorBanner`, `StopButton`, `RegenerateButton`, and plugin renderer slots.
+Required components include `AssistantShell`, `ConversationThread`, `MessageTimeDivider`, `UserMessage`, `AssistantMessage`, `StreamingMarkdown`, `ThinkingDisclosure`, `ToolActivity`, `Composer`, `AttachmentTray`, `AttachmentGrid`, `AttachmentFileCard`, `AttachmentProcessingStatus`, `AttachmentLightbox`, `VoiceMessageBubble`, `LiveDictationControl`, `TranscriptionStatus`, `ActionCard`, `AutoAppliedResultCard`, `ExecutionModeSettings`, `HostDataToolSettings`, `CitationList`, `PrivacyCenter`, `PrivacyJobStatus`, `ErrorBanner`, `StopButton`, `RegenerateButton`, generic content renderer slots, and `action_type`-keyed Action renderer slots.
 
-**Acceptance:** panel, drawer, inline, and full-page modes work at mobile and desktop widths; Host-driven active-Conversation changes rebind the thread without adding framework-owned navigation; keyboard and screen-reader paths cover every operation; chronology, multimodal flows, both voice modes, Privacy Center, tool visibility, six disclosure levels, and `raw_trace` availability remain consistent.
+**Acceptance:** panel, drawer, inline, and full-page modes work at mobile and desktop widths; the Host can set Shell title/subtitle, typed user-facing labels, and size through public props and theme variables, and can hide maintainer settings from ordinary users without changing their configured values; English defaults remain complete when no label overrides are supplied; the published Vue package exposes one documented default stylesheet import and contains library artifacts rather than Reference Host application assets; Host-driven active-Conversation changes rebind the thread without adding framework-owned navigation; keyboard and screen-reader paths cover every operation; chronology, multimodal flows, both voice modes, Privacy Center, tool visibility, six disclosure levels, and `raw_trace` availability remain consistent.
 
 ### M7. Multimodal Input Pack
 
@@ -624,7 +632,7 @@ A sent Message may appear before processing completes, but its assistant Run wai
 
 OCR, captions, extracted text, structured tables, embeddings, summaries, thumbnails, and previews are versioned derived artifacts with source Attachment IDs and processor provenance. Historical playback uses stable Attachment IDs and authorized Thumbnail/Preview/Original endpoints; persisted history and caches MUST NOT depend on `blob:` URLs, data URLs, or array indexes.
 
-Chat Attachments are not Host business media by default. A domain Action that saves an attachment as a receipt, record photo, gallery item, or other Host resource MUST show source Attachment references, selected promotion targets, and excluded evidence before confirmation. Confirmation creates an explicit `host_resource_ref` by copy or link according to Host policy. Action fields derived from attachments identify source file, page/region, processor/version, and uncertainty. Privacy Center shows chat and promoted resources separately and previews cross-resource deletion impact.
+Chat Attachments are not Host business media by default. A domain Action that saves an attachment as a receipt, record photo, gallery item, or other Host resource MUST show source Attachment references, selected promotion targets, and excluded evidence before confirmation. The Action payload records stable `source_attachment_refs`; a successful Host copy or link records `promoted_attachment_refs`. Confirmation creates an explicit `host_resource_ref` by copy or link according to Host policy. Action fields derived from attachments identify source file, page/region, processor/version, and uncertainty. Privacy Center shows chat and promoted resources separately and previews cross-resource deletion impact.
 
 Voice input configuration is:
 
@@ -700,7 +708,7 @@ blocked_plugin_disabled -> cancelled | archived   (manual resolution)
 
 **Responsibilities:** typed proposals, execution-mode and allowlist policy evaluation, immutable policy decisions, schema-driven editing, Attachment source provenance and Promotion preview, confirmation, bounded automatic application, cancellation, plugin-disable blocking, conflict handling, idempotent application, result visibility, partial results, retry, archival, and optional undo.
 
-**Acceptance:** the model can propose but cannot bypass execution policy or apply directly; `read_only` rejects write proposals, `confirm_each` always reaches `awaiting_confirmation`, and `auto_apply_allowlist` reaches `auto_applying` only after a positive reviewed policy decision. Both confirmed and automatic application recheck authorization, target version, bounds, and validation immediately before an idempotent Host transaction. Policy misses fall back to confirmation or blocked state. Auto-applied result cards remain visible and expose edit/undo only when supported. An Action derived from attachments preserves stable `source_attachment_refs`, page/region or processor provenance where applicable, and separately lists any `promoted_attachment_refs` before mandatory confirmation. Disabling a contributing plugin moves every non-terminal Pending Action that has not begun applying to `blocked_plugin_disabled` without cancelling or executing it. Compatible re-enable requires revalidation before returning to policy evaluation; permanent removal allows manual cancellation or archival. Applied history remains readable, and an Action already in `applying` or `auto_applying` records its eventual Host result rather than being silently interrupted.
+**Acceptance:** the model can propose but cannot bypass execution policy or apply directly; `read_only` rejects write proposals, `confirm_each` always reaches `awaiting_confirmation`, and `auto_apply_allowlist` reaches `auto_applying` only after a positive reviewed policy decision. Both confirmed and automatic application recheck authorization, target version, bounds, and validation immediately before an idempotent Host transaction. Policy misses fall back to confirmation or blocked state. Auto-applied results remain visible and expose edit/undo only when the Host Adapter declares undo; framework code MUST NOT call a reference repository for a custom Host undo. Host conflict and missing-target failures during apply or undo become terminal typed Action results rather than unhandled request errors. Attachment-derived Actions preserve source/promoted refs before mandatory confirmation. Plugin disable/re-enable follows the state machine, in-flight application records its eventual Host result, and applied history remains readable.
 
 ### M12. Safety & Governance
 
@@ -943,6 +951,7 @@ The default UI uses only two surfaces: `PrivacyCenter` for the inventory and act
 - Sensitive fields MUST be redacted from logs and developer fixtures.
 - Provider credentials MUST remain server-side.
 - Attachment access MUST be private and host-authorized.
+- A Provider that needs private Attachment bytes MUST receive the immutable Run Host Context and use the Host-authorized media boundary; an Attachment ID alone never grants access.
 - Attachment limits and processor capabilities MUST be disclosed before selection or send; no layer may silently truncate, drop, or reinterpret selected files.
 - Persisted Messages use stable Attachment IDs and private authorized variants; public asset URLs, `blob:` URLs, data URLs, and array indexes are not durable history references.
 - Attachment-derived facts and Action fields retain processor/version plus source Attachment/page/region provenance. Promotion into a Host business resource requires explicit Action confirmation.
@@ -1011,13 +1020,13 @@ The following lanes run in parallel on Wave 1 public contracts or fakes:
 
 ### Wave 3 — Reference integration and cross-module proof
 
-M14 integrates one representative real Host plus domain-neutral wellness, itinerary, and household-finance fixtures. Collectively they prove all four Host integration levels, single/multiple Conversation modes, all three Context Profiles, both voice modes, Attachment processing/Promotion, Host Data Write Tools default-off and scoped enablement, confirmed/automatic Action paths, Reasoning Disclosure, retrieval citations, Memory, plugin disablement, Privacy export/deletion, interruption recovery, idempotency, and domain portability.
+M14 integrates one representative real Host plus domain-neutral wellness, itinerary, and household-finance fixtures. The representative Host uses the published backend mount API and default frontend package rather than copying the reference application's bootstrap. Collectively they prove all four Host integration levels, single/multiple Conversation modes, all three Context Profiles, both voice modes, Attachment processing/Promotion, Host Data Write Tools default-off and scoped enablement, confirmed/automatic Action paths, Reasoning Disclosure, retrieval citations, Memory, plugin disablement, Privacy export/deletion, interruption recovery, idempotency, and domain portability.
 
 **Exit gate:** C9 end-to-end/portability suite passes; at least one real Host removes a duplicated assistant path and uses framework public modules rather than a parallel demo.
 
 ### Release gate
 
-Release requires every MVP acceptance criterion plus protocol/migration compatibility, dependency/license, performance, security/Host Data Tool, privacy/data-lifecycle, accessibility, responsive/visual, recovery/observability, and public-documentation reviews. Release evidence records versions, fixtures, test reports, known gaps, and rollback instructions.
+Release requires every MVP acceptance criterion plus protocol/migration compatibility, dependency/license, performance, security/Host Data Tool, privacy/data-lifecycle, accessibility, responsive/visual, recovery/observability, and public-documentation reviews. Backend integration tests run against both the declared minimum and current supported framework dependency sets. Release evidence records versions, fixtures, test reports, known gaps, and rollback instructions.
 
 ### Parallel work rules
 
@@ -1045,12 +1054,13 @@ Conformance is evidence-based and modular. Passing one module suite permits a cl
 - persist user input before provider invocation and prove empty/premature streams cannot complete successfully;
 - cover Run lifecycle, cancellation, stop/regenerate, timeout, provider error mapping, usage, interruption, resume by `after_seq`, and reconciliation;
 - verify non-idempotent work is never replayed automatically and provider reasoning capability is reported accurately;
+- verify Providers receive the immutable authorized Run Host Context and cannot resolve media from another actor/scope;
 - run OpenAI-compatible and Mock adapters against the same scripted text/tool/reasoning/error fixtures;
 - verify Conversation `single`/`multiple` topology uses the same Runtime and storage contracts.
 
 ### C2. Host boundary, Tool, and Host Data Tool conformance
 
-- exercise Host Adapter allow/deny/timeout/conflict/refresh and actor/tenant/Conversation-scope isolation;
+- exercise Host Adapter allow/deny/timeout/conflict/apply/undo/refresh and actor/tenant/Conversation/page-context isolation;
 - validate Tool input/output, permission, visibility, cancellation, timeout, safe retry, redaction, and audit behavior;
 - prove Host Data Write Tools are absent by default and enabling one entity/operation exposes only reviewed fields, validation, row scope, concurrency, limits, and execution mode;
 - verify create, update, upsert, delete, link, and unlink independently remain default-off and retain their operation-specific scope, concurrency, forced-confirmation, and compensation requirements when enabled;
@@ -1063,6 +1073,7 @@ Conformance is evidence-based and modular. Passing one module suite permits a cl
 - verify Integration Generator read scaffolding, write-proposal and auto-apply eligibility review gates, unresolved-risk reporting, and zero activation before review;
 - validate Manifest schema versions, plugin protocol/data-schema compatibility, dependencies, configuration, capability/permission declarations, Privacy Resources, renderer registration, and fail-closed activation;
 - disable integrations/plugins without leaving callable tools or orphaning export/delete handlers; historical rendering remains available through generic fallback;
+- prove no sample Plugin activates unless the Host explicitly registers it, and a Host Action renderer can replace the generic ActionCard by `action_type` without forking Headless state;
 - verify `blocked_plugin_disabled` Actions, compatible re-enable revalidation, permanent removal cancellation/archival, and applied-history readability.
 
 ### C4. Headless state conformance

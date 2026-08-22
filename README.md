@@ -84,6 +84,43 @@ npm run dev --workspace frontend -- --host 127.0.0.1 --port 5173
 
 Open `http://127.0.0.1:5173`. The reference Host uses explicit `X-Actor-ID` and `X-Scope-Key` headers and the credential-free Mock Provider by default.
 
+An existing FastAPI Host mounts the backend without copying the reference application bootstrap:
+
+```python
+from pathlib import Path
+
+from framed_assistant import EmbeddedAssistant
+
+assistant = EmbeddedAssistant.create(
+    data_dir=Path(".data/assistant"),
+    conversation_mode="single",
+    manifest=host_manifest,
+    provider_factory=lambda store: HostProvider(store),
+    host_adapter_factory=lambda store: HostAdapter(store),
+)
+assistant.mount(app, host_context_dependency=current_assistant_actor)
+```
+
+All mounted services are kept under `app.state.framed_assistant`. The Host supplies authentication, page context, the Integration Manifest, Provider, and Action adapter; the framework supplies routes, persistence, runtime, attachments, policy evaluation, and Privacy services.
+
+Vue Hosts import both the component API and the default stylesheet, then apply Host variables after it:
+
+```ts
+import { AssistantApi, AssistantShell } from "@framed-assistant/vue";
+import "@framed-assistant/vue/style.css";
+import "./host-theme.css";
+```
+
+Use `show-settings="false"` when Context, execution, and disclosure controls belong in a Host maintainer/settings surface rather than the ordinary chat screen.
+
+The `labels` prop accepts typed partial overrides for Host localization while preserving complete English defaults:
+
+```vue
+<AssistantShell
+  :labels="{ messagePlaceholder: '输入问题…', send: '发送' }"
+/>
+```
+
 To use an OpenAI-compatible Chat Completions endpoint:
 
 ```bash

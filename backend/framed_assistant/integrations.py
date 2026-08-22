@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from .models import PluginState
+
 
 class IntegrationModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -72,4 +74,13 @@ REFERENCE_MANIFEST = HostIntegrationManifest(
         ActionRule(action_type="attachment.promote", risk="high", auto_apply_eligible=False),
         ActionRule(action_type="sample.records.create", risk="medium", auto_apply_eligible=False),
     ],
+)
+
+REFERENCE_PLUGIN = PluginState(
+    id="sample.records",
+    version="0.1.0",
+    protocol_range=">=0.1.0 <0.2.0",
+    data_schema_version="1",
+    enabled=True,
+    capabilities=["records.read", "records.propose"],
 )

@@ -4,7 +4,9 @@
   "private": true,
   "type": "module",
   "files": [
-    "dist"
+    "dist/**/*.d.ts",
+    "dist/framed-assistant.css",
+    "dist/framed-assistant.js"
   ],
   "exports": {
     ".": {

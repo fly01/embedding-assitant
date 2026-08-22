@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import { nextTick, onMounted, ref, watch, type Component } from "vue";
 import type { AssistantApi } from "../api";
+import { DEFAULT_ASSISTANT_LABELS } from "../labels";
 import type { AssistantStore } from "../store";
 import { formatMessageTime, messageTime, shouldShowTime } from "../time";
+import type { ContentPart, PendingAction } from "../types";
 import ActionCard from "./ActionCard.vue";
 import AttachmentGroup from "./AttachmentGroup.vue";
 import MarkdownContent from "./MarkdownContent.vue";
@@ -12,9 +14,15 @@ const props = withDefaults(
   defineProps<{
     api: AssistantApi;
     store: AssistantStore;
+    emptyLabel?: string;
     renderers?: Record<string, Component>;
+    actionRenderers?: Record<string, Component>;
   }>(),
-  { renderers: () => ({}) },
+  {
+    emptyLabel: DEFAULT_ASSISTANT_LABELS.emptyThread,
+    renderers: () => ({}),
+    actionRenderers: () => ({}),
+  },
 );
 const viewport = ref<HTMLElement>();
 let followBottom = true;
@@ -25,6 +33,10 @@ function attachmentIds(message: {
   return message.content
     .filter((part) => part.type === "attachment" && part.attachment_id)
     .map((part) => part.attachment_id as string);
+}
+
+function actionFor(part: ContentPart): PendingAction | undefined {
+  return props.store.activeActions.value.get(String(part.data.action_id));
 }
 
 function onScroll(): void {
@@ -90,14 +102,23 @@ onMounted(onScroll);
             v-if="['text', 'markdown'].includes(part.type) && part.text"
             :text="part.text"
           />
-          <ActionCard
+          <component
             v-else-if="
               part.type === 'action' &&
-              store.activeActions.value.get(String(part.data.action_id))
+              actionFor(part) &&
+              actionRenderers[actionFor(part)!.action_type]
             "
-            :action="
-              store.activeActions.value.get(String(part.data.action_id))!
-            "
+            :is="actionRenderers[actionFor(part)!.action_type]"
+            :action="actionFor(part)"
+            @confirm="store.confirmAction"
+            @cancel="store.cancelAction"
+            @edit="store.editAction"
+            @undo="store.undoAction"
+            @open-attachment="openAttachment"
+          />
+          <ActionCard
+            v-else-if="part.type === 'action' && actionFor(part)"
+            :action="actionFor(part)!"
             @confirm="store.confirmAction"
             @cancel="store.cancelAction"
             @edit="store.editAction"
@@ -117,7 +138,7 @@ onMounted(onScroll);
       </article>
     </template>
     <p v-if="!store.state.messages.length" class="empty-thread">
-      Ask a question, attach a file, or propose a Host record.
+      {{ emptyLabel }}
     </p>
   </section>
 </template>

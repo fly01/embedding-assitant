@@ -78,7 +78,7 @@ class ToolRegistry:
         return result
 
 
-def create_tool_registry(store: Store) -> ToolRegistry:
+def create_essentials_registry() -> ToolRegistry:
     registry = ToolRegistry()
     registry.register(
         deterministic_tool(
@@ -138,6 +138,10 @@ def create_tool_registry(store: Store) -> ToolRegistry:
             lambda _host, arguments: {"text": re.sub(r"\s+", " ", arguments["text"]).strip()},
         )
     )
+    return registry
+
+
+def register_reference_tools(registry: ToolRegistry, store: Store) -> None:
     registry.register(
         ToolDefinition(
             name="host.records.list",
@@ -168,6 +172,11 @@ def create_tool_registry(store: Store) -> ToolRegistry:
             },
         )
     )
+
+
+def create_tool_registry(store: Store) -> ToolRegistry:
+    registry = create_essentials_registry()
+    register_reference_tools(registry, store)
     return registry
 
 

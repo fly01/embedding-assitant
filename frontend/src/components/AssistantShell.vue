@@ -1,21 +1,42 @@
 <script setup lang="ts">
-import { onMounted, watch, type Component } from "vue";
+import { computed, onMounted, watch, type Component } from "vue";
 import type { AssistantApi } from "../api";
 import type { DictationAdapter } from "../dictation";
+import {
+  DEFAULT_ASSISTANT_LABELS,
+  type AssistantLabels,
+} from "../labels";
 import { createAssistantStore } from "../store";
 import Composer from "./Composer.vue";
 import ConversationThread from "./ConversationThread.vue";
 import ThinkingDisclosure from "./ThinkingDisclosure.vue";
 import ToolActivity from "./ToolActivity.vue";
 
-const props = defineProps<{
-  api: AssistantApi;
-  conversationId: string;
-  dictationAdapter: DictationAdapter;
-  renderers?: Record<string, Component>;
-}>();
+const props = withDefaults(
+  defineProps<{
+    api: AssistantApi;
+    conversationId: string;
+    dictationAdapter: DictationAdapter;
+    title?: string;
+    subtitle?: string;
+    showSettings?: boolean;
+    labels?: Partial<AssistantLabels>;
+    renderers?: Record<string, Component>;
+    actionRenderers?: Record<string, Component>;
+  }>(),
+  {
+    title: "Assistant",
+    subtitle: "Framed by the Host",
+    showSettings: true,
+    labels: () => ({}),
+  },
+);
 const emit = defineEmits<{ hostRefresh: [] }>();
 const store = createAssistantStore(props.api);
+const uiLabels = computed(() => ({
+  ...DEFAULT_ASSISTANT_LABELS,
+  ...props.labels,
+}));
 
 watch(
   () => props.conversationId,
@@ -27,7 +48,7 @@ watch(
     if (
       states.some(
         (state, index) =>
-          state === "applied" && previous?.[index] !== "applied",
+          ["applied", "undone"].includes(state) && previous?.[index] !== state,
       )
     )
       emit("hostRefresh");
@@ -41,9 +62,12 @@ onMounted(() => store.loadConversation(props.conversationId));
     <header class="assistant-toolbar">
       <div class="assistant-title">
         <span class="assistant-mark">F</span>
-        <div><strong>Assistant</strong><small>Framed by the Host</small></div>
+        <div>
+          <strong>{{ title }}</strong>
+          <small>{{ subtitle }}</small>
+        </div>
       </div>
-      <div class="assistant-settings">
+      <div v-if="showSettings" class="assistant-settings">
         <label>
           <span>Context</span>
           <select
@@ -82,7 +106,13 @@ onMounted(() => store.loadConversation(props.conversationId));
         </label>
       </div>
     </header>
-    <ConversationThread :api="api" :store="store" :renderers="renderers" />
+    <ConversationThread
+      :api="api"
+      :store="store"
+      :renderers="renderers"
+      :action-renderers="actionRenderers"
+      :empty-label="uiLabels.emptyThread"
+    />
     <div class="run-details">
       <ThinkingDisclosure
         :level="store.state.disclosureLevel"
@@ -111,17 +141,23 @@ onMounted(() => store.loadConversation(props.conversationId));
         {{ store.state.error }}
       </p>
       <div class="run-controls">
-        <button v-if="store.state.streaming" @click="store.stop">Stop</button>
+        <button v-if="store.state.streaming" @click="store.stop">
+          {{ uiLabels.stop }}
+        </button>
         <button
           v-else-if="
             store.state.messages.some((message) => message.role === 'user')
           "
           @click="store.regenerate"
         >
-          Regenerate
+          {{ uiLabels.regenerate }}
         </button>
       </div>
     </div>
-    <Composer :store="store" :dictation-adapter="dictationAdapter" />
+    <Composer
+      :store="store"
+      :dictation-adapter="dictationAdapter"
+      :labels="uiLabels"
+    />
   </main>
 </template>

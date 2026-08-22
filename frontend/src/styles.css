@@ -119,8 +119,8 @@ p {
 }
 
 .assistant-shell {
-  height: calc(100vh - 112px);
-  min-height: 620px;
+  height: var(--fa-shell-height, calc(100vh - 112px));
+  min-height: var(--fa-shell-min-height, 620px);
   display: grid;
   grid-template-rows: auto minmax(0, 1fr) auto auto;
   overflow: hidden;
@@ -694,8 +694,8 @@ p {
     padding: 0;
   }
   .assistant-shell {
-    height: calc(100dvh - 130px);
-    min-height: 520px;
+    height: var(--fa-shell-height, calc(100dvh - 130px));
+    min-height: var(--fa-shell-min-height, 520px);
     border: 0;
     border-radius: 0;
   }

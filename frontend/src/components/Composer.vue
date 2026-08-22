@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref } from "vue";
 import type { DictationAdapter } from "../dictation";
+import type { AssistantLabels } from "../labels";
 import type { AssistantStore } from "../store";
 import AttachmentTray from "./AttachmentTray.vue";
 import LiveDictationControl from "./LiveDictationControl.vue";
@@ -9,6 +10,7 @@ import VoiceRecorder from "./VoiceRecorder.vue";
 const props = defineProps<{
   store: AssistantStore;
   dictationAdapter: DictationAdapter;
+  labels: AssistantLabels;
 }>();
 const text = ref("");
 const mode = ref<"text" | "voice_message" | "live_dictation">("text");
@@ -81,20 +83,20 @@ function beginDictation(): void {
     <textarea
       v-model="text"
       rows="2"
-      aria-label="Message"
-      placeholder="Ask the assistant…"
+      :aria-label="labels.messageInput"
+      :placeholder="labels.messagePlaceholder"
       @keydown.enter.exact.prevent="submit"
       @paste="pasteFiles"
     />
     <div class="composer-actions">
       <button
         type="button"
-        aria-label="Attach files"
+        :aria-label="labels.attachFiles"
         @click="fileInput?.click()"
       >
         ＋
       </button>
-      <small>8 files · 50 MiB total</small>
+      <small>{{ labels.fileLimit }}</small>
       <input
         ref="fileInput"
         class="visually-hidden"
@@ -104,7 +106,7 @@ function beginDictation(): void {
       />
       <button
         type="button"
-        aria-label="Take photo"
+        :aria-label="labels.takePhoto"
         @click="cameraInput?.click()"
       >
         Camera
@@ -119,16 +121,18 @@ function beginDictation(): void {
       />
       <select
         v-model="mode"
-        aria-label="Input mode"
+        :aria-label="labels.inputMode"
         @change="mode === 'live_dictation' && beginDictation()"
       >
-        <option value="text">Text</option>
-        <option value="voice_message">Voice message</option>
-        <option value="live_dictation">Live dictation</option>
+        <option value="text">{{ labels.textMode }}</option>
+        <option value="voice_message">{{ labels.voiceMessageMode }}</option>
+        <option value="live_dictation">{{ labels.liveDictationMode }}</option>
       </select>
       <template v-if="mode === 'voice_message'">
         <VoiceRecorder @recorded="addVoice" />
-        <button type="button" @click="voiceInput?.click()">Upload audio</button>
+        <button type="button" @click="voiceInput?.click()">
+          {{ labels.uploadAudio }}
+        </button>
         <input
           ref="voiceInput"
           class="visually-hidden"
@@ -148,7 +152,7 @@ function beginDictation(): void {
         type="submit"
         :disabled="store.state.streaming || !text.trim()"
       >
-        {{ store.state.streaming ? "Running…" : "Send" }}
+        {{ store.state.streaming ? labels.running : labels.send }}
       </button>
     </div>
   </form>

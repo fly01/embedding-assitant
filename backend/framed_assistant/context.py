@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Protocol
 
-from .host import ReferenceHostAdapter
+from .host import HostAdapter
 from .models import ContextProfile, HostContext, Message
 from .store import Store
 
@@ -38,7 +38,7 @@ class ContextView:
 
 
 class ContextCompiler:
-    def __init__(self, store: Store, host_adapter: ReferenceHostAdapter, summarizer: Summarizer):
+    def __init__(self, store: Store, host_adapter: HostAdapter, summarizer: Summarizer):
         self.store = store
         self.host_adapter = host_adapter
         self.summarizer = summarizer

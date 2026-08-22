@@ -6,7 +6,7 @@ from typing import Any
 from .actions import ActionService
 from .context import ContextCompiler
 from .errors import ToolError, ValidationError
-from .host import ReferenceHostAdapter
+from .host import HostAdapter
 from .models import (
     ContentPart,
     ContextProfile,
@@ -32,7 +32,7 @@ class AssistantRuntime:
         context_compiler: ContextCompiler,
         tools: ToolRegistry,
         actions: ActionService,
-        host_adapter: ReferenceHostAdapter,
+        host_adapter: HostAdapter,
     ):
         self.store = store
         self.provider = provider
@@ -101,6 +101,7 @@ class AssistantRuntime:
         usage = {"input_tokens": context.manifest["used"], "output_tokens": 0}
         try:
             async for provider_event in self.provider.generate(
+                host=host,
                 context=context,
                 user_text=request.text,
                 attachments=attachments,

@@ -21,10 +21,11 @@ class VersionedModel(ApiModel):
     schema_version: Literal["0.1"] = SCHEMA_VERSION
 
 
-class HostContext(ApiModel):
+class HostContext(VersionedModel):
     actor_id: str
     scope_key: str
     denied_permissions: set[str] = Field(default_factory=set)
+    page_context: dict[str, Any] = Field(default_factory=dict)
 
 
 class ConversationMode(StrEnum):

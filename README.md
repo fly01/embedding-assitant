@@ -35,6 +35,7 @@ The framework manages assistant behavior. The host application keeps control of 
 - **Two-layer frontend:** a polished default UI is built on a replaceable Headless state layer.
 - **Progressive capabilities:** applications enable only the packages they need.
 - **Policy-controlled side effects:** every business write is a typed Action; the Host may require confirmation or automatically apply only a reviewed low-risk allowlisted Action.
+- **Default-off Host Data Write Tools:** reviewed schema-bound create/update/upsert/delete/link/unlink tools can write through a Host transaction adapter, but the model never receives raw SQL, credentials, or unrestricted database access.
 - **Configurable reasoning disclosure:** hosts can choose from hidden status through contextual activity, developer diagnostics, and an opt-in `raw_trace` level that displays the complete reasoning trace returned by a capable model provider.
 - **Rebuildable context summaries:** Context Management never deletes or rewrites original messages.
 - **Configurable conversation and context policy:** single and multiple Conversation modes share one Runtime; `lite`, `balanced`, and `durable` profiles share one Context Compiler.
@@ -123,6 +124,23 @@ Every level retains the Host Adapter authority boundary. Generated write mapping
 
 Automatic mode never gives the model direct database access. Delete, payment/transfer, external communication, private-data sharing, account or permission change, bulk or irreversible mutation, Attachment Promotion, Privacy deletion, ambiguous targets, low-confidence OCR/ASR, and Actions without approved compensation still require confirmation.
 
+Host Data Write Tools are a separate, default-disabled capability:
+
+```yaml
+host_data_tools:
+  enabled: false
+  raw_sql: false
+  operations:
+    create: false
+    update: false
+    upsert: false
+    delete: false
+    link: false
+    unlink: false
+```
+
+Hosts enable individual entities, operations, writable fields, actor/tenant row scope, optimistic concurrency, and execution mode. Every model call becomes a typed Action and executes through the Host-owned transactional adapter. Enabling one entity or operation never enables the rest.
+
 ### Message time and voice input
 
 - Continuous Messages inside the default five-minute interval share one compact time anchor; date and time labels become more explicit for older history and are recomputed after pagination.
@@ -157,7 +175,7 @@ A host can adopt Framed Assistant incrementally:
 3. Enable the unified Attachment System for multi-image/file input, private processing, gallery preview, persisted voice-message, and editable live dictation.
 4. Select a context profile, then add configurable reasoning disclosure, tool activity, and Context Management as needed.
 5. Add retrieval, citations, and explicit Memory where appropriate.
-6. Add business Actions through a Manifest, generated integration, or optional custom Domain Plugin, then choose `confirm_each` or reviewed `auto_apply_allowlist` policy.
+6. Optionally enable reviewed Host Data Write Tools through a Manifest, generated integration, or custom Domain Plugin, then choose `confirm_each` or reviewed `auto_apply_allowlist` policy.
 
 No stage requires the host to surrender authorization or transaction control.
 
@@ -167,6 +185,7 @@ No stage requires the host to surrender authorization or transaction control.
 - Protected reads and external calls require host authorization.
 - Side effects pass through Action Workspace and are reauthorized immediately before confirmed or automatic application.
 - `auto_apply_allowlist` is deny-by-default, cannot be selected by the model, and records the reviewed policy decision for every automatic Action.
+- Host Data Write Tools are absent from the model manifest by default; raw SQL, table browsing, connection details, unrestricted predicates, undeclared fields, and out-of-scope rows are forbidden.
 - Committed actions require idempotency keys and audit records.
 - Provider credentials remain server-side.
 - Private attachments use host-authorized access.

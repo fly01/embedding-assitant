@@ -42,6 +42,7 @@ The MVP MUST:
 10. Allow a standard CRUD-style application to integrate without hand-writing a Domain Plugin.
 11. Provide one Privacy Center for inventory, export, deletion, retention visibility, and derived-data invalidation across all assistant-managed data.
 12. Provide one Attachment System for draft composition, private storage, processing, message rendering, preview, retry, provenance, and explicit promotion into Host business resources.
+13. Provide configurable Host Data Write Tools for reviewed schema-bound CRUD operations; keep them disabled by default and prohibit arbitrary SQL or unscoped database access.
 
 ## Non-goals
 
@@ -50,6 +51,7 @@ The MVP does not include:
 - an online third-party plugin marketplace;
 - arbitrary plugin code downloaded at runtime;
 - production-runtime scanning that automatically discovers and activates undeclared Host APIs or write operations;
+- arbitrary SQL, arbitrary table/column access, or model-authored query predicates against a Host database;
 - browser automation as a general-purpose assistant capability;
 - arbitrary code execution;
 - payments, transfers, or irreversible financial operations;
@@ -72,6 +74,8 @@ The MVP does not include:
 | Action | Typed representation of a Host-side business change. It is applied only after Host execution policy selects user confirmation or a pre-approved auto-apply path. |
 | Execution mode | Host and scope policy selecting `read_only`, `confirm_each`, or `auto_apply_allowlist` behavior for business Actions. |
 | Auto-apply policy | Reviewed allowlist and bounded risk rules that permit eligible Actions to skip per-operation user confirmation while retaining validation, transaction, idempotency, audit, and result visibility. |
+| Host Data Write Tool | Manifest-generated schema-bound create, update, upsert, delete, link, or unlink capability that always produces a typed Action and executes only through the Host data adapter. |
+| Host data adapter | Host-owned transactional boundary that maps approved data tools to scoped repositories or APIs without exposing raw database credentials, SQL, tables, or unrestricted queries to the model. |
 | Capability package | An officially maintained, versioned package that applications explicitly enable, except for the required safety baseline. |
 | Host Integration Manifest | Declarative application configuration for context sources, tools, Actions, permissions, generic renderers, and adapter mappings. |
 | Integration Generator | Development/build-time tool that analyzes public application contracts and produces a reviewable Host Integration Manifest plus scaffolding. |
@@ -438,13 +442,14 @@ interface AssistantHostAdapter {
   getActor(): Promise<ActorContext>;
   getConversationScope(): Promise<ConversationScope>;
   getPageContext(scope: PageContextScope): Promise<PageContext>;
+  getDataToolCapabilities?(): Promise<HostDataToolCatalog>;
   authorize(request: PermissionRequest): Promise<PermissionDecision>;
   applyAction(action: ConfirmedAction): Promise<ActionApplyResult>;
   refreshData?(result: ActionApplyResult): Promise<void>;
 }
 ```
 
-**Acceptance:** missing capabilities are reported as disabled; the Host supplies a stable Conversation scope; denied permissions produce structured results; page context has a field allowlist and size budget; action application and refresh are explicit, testable callbacks; a `Level 1` application can implement the boundary through an approved Host Integration Manifest without custom Domain Plugin code.
+**Acceptance:** missing capabilities are reported as disabled; the Host supplies a stable Conversation scope; denied permissions produce structured results; page context has a field allowlist and size budget; any Host data capability catalog is constrained by the approved Integration Manifest and current actor scope; Action application and refresh are explicit, testable callbacks; a `Level 1` application can implement the boundary through an approved Host Integration Manifest without custom Domain Plugin code.
 
 ### M3. Tool Runtime and Essentials Pack
 
@@ -469,9 +474,40 @@ interface ToolManifest {
 }
 ```
 
+Host Data Write Tools are an optional M3 capability family and are disabled by default:
+
+```yaml
+host_data_tools:
+  enabled: false
+  expose_to_model: false
+  raw_sql: false
+
+  operations:
+    create: false
+    update: false
+    upsert: false
+    delete: false
+    link: false
+    unlink: false
+
+  entities:
+    food_log:
+      source: host_repository
+      writable_fields: [occurred_at, meal_type, description, calories]
+      row_scope: current_actor
+      optimistic_lock: version
+      execution_mode: confirm_each
+```
+
+Enabling the family does not enable every operation. The Host explicitly allowlists entities, operations, writable fields, actor/tenant row scope, concurrency field, validation schema, limits, and execution mode. The generated model-facing tools are domain-shaped names such as `host_data.food_log.create`; the model never receives a generic SQL executor, table browser, unrestricted filter, connection string, or database credential.
+
+Every write-tool call first creates a typed Action containing the validated entity, operation, payload, target/version, permission scope, idempotency key, and provenance. M11 then applies `read_only`, `confirm_each`, or `auto_apply_allowlist`. Create, update, upsert, link, and unlink MAY be reviewed for low-risk automatic application. Delete, bulk mutation, unrestricted relationship changes, and operations without optimistic concurrency or compensation require confirmation or remain disabled.
+
+The Host data adapter maps an approved Action to a parameterized repository/API operation and owns final authorization, validation, transaction, conflict detection, and result serialization. Tool visibility is recalculated per actor and Host scope; disabled or unauthorized tools are omitted from the model tool manifest rather than exposed and rejected later.
+
 Essentials includes date/time/time-zone operations, a calculator, unit conversion, number and currency formatting, text cleanup, and bounded host page context. Currency exchange requires a caller-supplied rate; live rates belong to retrieval or a host plugin.
 
-**Acceptance:** invalid input never executes; invalid output becomes a typed tool failure; automatic retry is limited to deterministic or read-only operations; default tools do not write business data or access the network.
+**Acceptance:** invalid input never executes; invalid output becomes a typed tool failure; automatic retry is limited to deterministic or read-only operations; default tools do not write business data or access the network. Host Data Write Tools are absent from model manifests by default; enabling one entity/operation exposes only its reviewed schema and scope; every call becomes an Action; raw SQL and undeclared fields/rows remain impossible; conflicts and policy misses do not mutate Host data.
 
 ### M4. Integration and Plugin System
 
@@ -495,7 +531,7 @@ Custom Domain Plugins are optional and are installed at release time through the
 
 **Purpose:** provide an opinionated interface that is ready to ship and remains themeable.
 
-Required components include `AssistantShell`, `ConversationThread`, `MessageTimeDivider`, `UserMessage`, `AssistantMessage`, `StreamingMarkdown`, `ThinkingDisclosure`, `ToolActivity`, `Composer`, `AttachmentTray`, `AttachmentGrid`, `AttachmentFileCard`, `AttachmentProcessingStatus`, `AttachmentLightbox`, `VoiceMessageBubble`, `LiveDictationControl`, `TranscriptionStatus`, `ActionCard`, `AutoAppliedResultCard`, `ExecutionModeSettings`, `CitationList`, `PrivacyCenter`, `PrivacyJobStatus`, `ErrorBanner`, `StopButton`, `RegenerateButton`, and plugin renderer slots.
+Required components include `AssistantShell`, `ConversationThread`, `MessageTimeDivider`, `UserMessage`, `AssistantMessage`, `StreamingMarkdown`, `ThinkingDisclosure`, `ToolActivity`, `Composer`, `AttachmentTray`, `AttachmentGrid`, `AttachmentFileCard`, `AttachmentProcessingStatus`, `AttachmentLightbox`, `VoiceMessageBubble`, `LiveDictationControl`, `TranscriptionStatus`, `ActionCard`, `AutoAppliedResultCard`, `ExecutionModeSettings`, `HostDataToolSettings`, `CitationList`, `PrivacyCenter`, `PrivacyJobStatus`, `ErrorBanner`, `StopButton`, `RegenerateButton`, and plugin renderer slots.
 
 **Acceptance:** panel, drawer, inline, and full-page modes work at mobile and desktop widths; keyboard and screen-reader paths cover every operation; the five-minute default time-grouping rule survives pagination without moving the reading anchor; Attachment Tray location, multi-selection, stable order, per-item retry, message grouping, gallery navigation, and unavailable-source states remain consistent across surfaces; both voice modes expose distinct states and privacy expectations; Privacy Center inventory, preview, export, deletion, partial failure, and retention-limit states are accessible; internal tool identifiers remain hidden below developer level; all six disclosure levels render distinctly; `raw_trace` shows the full provider-supplied trace when available and an explicit unavailable state otherwise.
 
@@ -663,7 +699,7 @@ blocked_plugin_disabled -> cancelled | archived   (manual resolution)
 
 **Purpose:** let contributors integrate, debug, and test without a live model or production data.
 
-**Responsibilities:** Mock model server, stream inspector, context-profile simulator, Context Manifest/token inspector, tool playground, permission viewer, Privacy Resource/job simulator, Integration Generator, Manifest review report, generated adapter/fixture scaffolding, replay runner, plugin compatibility validator, fixed evaluation corpus, and failure simulation.
+**Responsibilities:** Mock model server, stream inspector, context-profile simulator, Context Manifest/token inspector, tool playground, Host Data Tool catalog/transaction/conflict simulator, permission viewer, Privacy Resource/job simulator, Integration Generator, Manifest review report, generated adapter/fixture scaffolding, replay runner, plugin compatibility validator, fixed evaluation corpus, and failure simulation.
 
 **Acceptance:** CI runs without provider credentials; a sanitized replay fixture reproduces a failed run; the Integration Generator never activates writes and reports unresolved security or transaction semantics; error simulation covers disconnect, timeout, malformed events, tool failure, permission denial, renderer failure, and attachment failure.
 
@@ -681,12 +717,12 @@ The repository SHOULD include domain-neutral examples for wellness logging, itin
 
 | Package | Default state | MVP contents |
 | --- | --- | --- |
-| Essentials | enabled | date/time, calculator, unit conversion, formatting, text cleanup, bounded page context |
+| Essentials | enabled | date/time, calculator, unit conversion, formatting, text cleanup, bounded page context; no Host Data Write Tools |
 | Multimodal Input | disabled | unified Attachment Tray/Asset/lifecycle, private upload and processing, Message renderers, Lightbox, explicit Host Promotion, persisted `voice_message` batch transcription, and editable `live_dictation` streaming transcription |
 | Context Management | disabled | `balanced` and `durable` profiles, segmentation, ledger, summaries, retrieval, invalidation, rebuild, and Context Manifest; core always provides `lite` |
 | Knowledge & Retrieval | disabled | web, URL, document, host knowledge, citations |
 | Memory | disabled | explicit scoped Memory with user controls |
-| Action Workspace | disabled | `read_only`, default `confirm_each`, and bounded `auto_apply_allowlist` execution with typed Actions, policy evidence, idempotent Host application, results, and optional undo |
+| Action Workspace | disabled | policy and execution layer for optional Host Data Write Tools: `read_only`, default `confirm_each`, and bounded `auto_apply_allowlist` with typed Actions, policy evidence, idempotent Host application, results, and optional undo |
 | Safety & Governance | minimum baseline required | permission enforcement, write blocking, redaction, Privacy Center inventory/export/deletion, derived-data invalidation, and audit; advanced limits are configurable |
 | Developer Toolkit | development only | Mock services, inspectors, replay, validation, evaluation, and failure simulation |
 
@@ -706,6 +742,15 @@ context_sources:
   - id: current_record
     source: page_state
     fields: [record_id, selected_date]
+
+host_data_tools:
+  enabled: true
+  operations: [create, update]
+  entities:
+    record:
+      writable_fields: [title, amount, occurred_at]
+      row_scope: current_actor
+      optimistic_lock: version
 
 tools:
   - id: list_records
@@ -730,7 +775,7 @@ actions:
 review_status: approved
 ```
 
-The Manifest contains approved mappings, not arbitrary executable business code. Read tools and generic schema renderers MAY activate after validation. Every write-proposal mapping requires explicit review of authorization, validation, idempotency, transaction, confirmation, privacy, and optional undo semantics. `auto_apply_eligible` is a separate reviewed declaration; it never follows automatically from discovering a POST, PATCH, or DELETE operation.
+The Manifest contains approved mappings, not arbitrary executable business code. Read tools and generic schema renderers MAY activate after validation. Host Data Write Tools remain disabled unless the Manifest explicitly enables an entity, operation, writable-field allowlist, row scope, concurrency strategy, and execution mode. Every write-proposal mapping requires explicit review of authorization, validation, idempotency, transaction, confirmation, privacy, and optional undo semantics. `auto_apply_eligible` is a separate reviewed declaration; it never follows automatically from discovering a POST, PATCH, DELETE, table, or repository operation.
 
 ### Custom Plugin Manifest
 
@@ -874,6 +919,8 @@ Privacy Jobs are scoped to the authenticated actor and Host scope, require destr
 ### Required controls
 
 - Protected tools MUST declare permissions and data scope.
+- Host Data Write Tools MUST be disabled and absent from model manifests by default. Enabling requires reviewed entity/operation/field/row-scope/concurrency/execution policy; arbitrary SQL, schema browsing, credentials, unrestricted predicates, and undeclared database access are forbidden.
+- The Host data adapter owns parameterized repository/API execution, authorization, transaction, conflict detection, and result serialization. Tool visibility is computed before model invocation for the current actor and scope.
 - External calls MUST declare what data leaves the host boundary.
 - Sensitive fields MUST be redacted from logs and developer fixtures.
 - Provider credentials MUST remain server-side.
@@ -932,7 +979,7 @@ Parallel work rules:
 - Host Adapter allow, deny, timeout, conflict, and refresh behavior;
 - integration-level tests for direct embed, declarative Manifest, generated Manifest review, and custom Domain Plugin paths;
 - Integration Generator tests for read-only scaffolding, write-proposal and auto-apply eligibility review gates, unresolved-risk reporting, and zero activation before review;
-- tool schema, permission, timeout, cancellation, and safe retry behavior;
+- tool schema, permission, timeout, cancellation, and safe retry behavior; Host Data Write Tool default-off visibility, reviewed entity/operation/field/row scope, optimistic concurrency, raw-SQL prohibition, and typed-Action routing;
 - integration/plugin compatibility, disablement, migration preflight, renderer failure, and `blocked_plugin_disabled` Pending Actions;
 - Headless reducers for every event type;
 - UI component, accessibility, responsive, and recovery tests;
@@ -961,6 +1008,9 @@ Parallel work rules:
 | Message time grouping | M0, M5, M6 | sequence order remains stable, continuous messages share one time anchor, five-minute/date boundaries create localized dividers, pagination recomputes without jump |
 | Long single Conversation | M1, M8, M13 | selected profile compiles a bounded Context View, original history remains unchanged, Manifest explains inclusion and exclusion |
 | Read-only execution mode | M2, M3, M11, M12 | write proposal is rejected or converted to non-executable guidance; no Host mutation occurs |
+| Disabled Host Data Write Tools | M2, M3, M4, M12 | model manifest contains no database write capability and no Host mutation path is reachable |
+| Enabled schema-bound create/update | M2, M3, M4, M11, M12 | only reviewed entity/operation/fields/scope are visible, call becomes typed Action, Host transaction applies under execution policy |
+| Host data conflict | M2, M3, M11, M12 | stale target version blocks mutation, reports conflict, and offers refresh/rebase rather than last-write-wins |
 | Confirmed write | M0, M2, M11, M12 | proposal, confirmation, host application, idempotency, audit |
 | Allowlisted automatic write | M0, M2, M4, M11, M12 | approved low-risk Action records policy evidence, revalidates, applies idempotently, shows result, and exposes undo when declared |
 | Auto-apply policy miss | M2, M4, M11, M12 | ambiguous, over-limit, low-confidence, unauthorized, or non-allowlisted Action falls back to confirmation or blocked without optimistic mutation |
@@ -982,6 +1032,7 @@ The MVP is complete when:
 - [ ] Text, multi-image/file Attachment Tray, private upload/processing/retry, one-Message rendering, image Lightbox, file cards, explicit Attachment Promotion, persisted voice-message with backend transcript, and live editable dictation flows work.
 - [ ] Streaming Markdown, all six disclosure levels, tool activity, citations, and Action cards render through public contracts.
 - [ ] A `Level 1` Host Integration Manifest contributes a tool plus confirmed and allowlisted automatic Actions without custom plugin code.
+- [ ] Host Data Write Tools are absent by default; an approved Manifest can enable scoped create/update/upsert/delete/link/unlink tools without exposing raw SQL or unrestricted database access.
 - [ ] A `Level 2` generated Manifest reports unresolved risks and cannot activate writes before review.
 - [ ] A sample `Level 3` Domain Plugin contributes a custom renderer or business handler without modifying core.
 - [ ] Every side-effecting operation passes through Action Workspace and Host execution policy; `confirm_each` is the default, and only reviewed low-risk allowlisted Actions can use automatic application.

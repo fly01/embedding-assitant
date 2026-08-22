@@ -6,7 +6,7 @@
 - Last refreshed: 2026-08-22
 - Primary product surfaces: embedded assistant shell, conversation thread, multimodal composer, Attachment System and Lightbox, voice input, reasoning/tool activity, Action Workspace, citations, Privacy Center, integration/plugin renderers, and developer inspectors.
 - Related specification: `docs/mvp-spec.md`.
-- Evidence reviewed: the public MVP specification, established embedded-assistant patterns across wellness, itinerary-planning, and household-finance domains, and common accessibility and recovery requirements for mobile chat interfaces.
+- Evidence reviewed: the public MVP specification, the Vue reference implementation, browser E2E and visual QA at 320/390 px and desktop widths, domain fixtures for wellness/itinerary/household finance, and common accessibility/recovery requirements.
 
 ## Brand
 

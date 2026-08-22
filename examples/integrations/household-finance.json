@@ -1,0 +1,26 @@
+{
+  "schema_version": "0.1",
+  "application": {
+    "id": "org.example.household-finance",
+    "conversation_mode": "single",
+    "context_profile": "durable"
+  },
+  "context_sources": [
+    { "id": "budget_period", "source": "page_state", "fields": ["month"] }
+  ],
+  "tools": [
+    {
+      "id": "list_budget_records",
+      "source": "openapi",
+      "permission": "budget.records.read"
+    }
+  ],
+  "actions": [
+    {
+      "id": "create_budget_record",
+      "source": "openapi",
+      "permission": "budget.records.write-proposal"
+    }
+  ],
+  "review_status": "approved"
+}

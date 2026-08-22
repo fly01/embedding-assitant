@@ -1,0 +1,16 @@
+{
+  "schema_version": "0.1",
+  "id": "action_fixture",
+  "conversation_id": "conv_fixture",
+  "run_id": "run_fixture",
+  "action_type": "host_data.record.create",
+  "payload": { "title": "Lunch", "amount": 18.5, "occurred_at": "2026-08-22" },
+  "state": "awaiting_confirmation",
+  "execution_mode": "confirm_each",
+  "idempotency_key": "idem_fixture",
+  "policy_decision": { "reason": "default_confirmation" },
+  "result": null,
+  "plugin_id": null,
+  "created_at": "2026-08-22T00:00:00Z",
+  "updated_at": "2026-08-22T00:00:00Z"
+}

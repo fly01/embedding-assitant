@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://framed-assistant.dev/schemas/context-view-0.1.json",
+  "title": "ContextView",
+  "type": "object",
+  "required": ["schema_version", "profile", "blocks", "manifest"],
+  "properties": {
+    "schema_version": { "const": "0.1" },
+    "profile": { "enum": ["lite", "balanced", "durable"] },
+    "blocks": { "type": "array", "items": { "type": "object" } },
+    "manifest": {
+      "type": "object",
+      "required": ["profile", "budget", "used", "blocks"],
+      "properties": {
+        "profile": { "enum": ["lite", "balanced", "durable"] },
+        "budget": { "type": "integer", "minimum": 1 },
+        "used": { "type": "integer", "minimum": 0 },
+        "blocks": { "type": "array", "items": { "type": "object" } }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

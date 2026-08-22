@@ -1,0 +1,17 @@
+{
+  "name": "framed-assistant-workspace",
+  "private": true,
+  "workspaces": [
+    "frontend"
+  ],
+  "scripts": {
+    "build": "npm run build --workspace frontend",
+    "format:check": "prettier --check .github contracts e2e examples frontend package.json playwright.config.ts",
+    "typecheck": "npm run typecheck --workspace frontend",
+    "test:e2e": "PLAYWRIGHT_BROWSERS_PATH=.data/playwright playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.55.0",
+    "prettier": "^3.9.6"
+  }
+}

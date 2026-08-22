@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://framed-assistant.dev/schemas/memory-0.1.json",
+  "title": "MemoryRecord",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "id",
+    "actor_id",
+    "scope",
+    "content",
+    "provenance",
+    "created_at",
+    "updated_at"
+  ],
+  "properties": {
+    "schema_version": { "const": "0.1" },
+    "id": { "type": "string" },
+    "actor_id": { "type": "string" },
+    "conversation_id": { "type": ["string", "null"] },
+    "scope": { "enum": ["conversation", "app", "user"] },
+    "content": { "type": "string", "minLength": 1 },
+    "provenance": { "type": "object" },
+    "created_at": { "type": "string", "format": "date-time" },
+    "updated_at": { "type": "string", "format": "date-time" }
+  },
+  "additionalProperties": false
+}

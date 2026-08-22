@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://framed-assistant.dev/schemas/action-0.1.json",
+  "title": "PendingAction",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "id",
+    "conversation_id",
+    "action_type",
+    "payload",
+    "state",
+    "execution_mode",
+    "idempotency_key",
+    "created_at",
+    "updated_at"
+  ],
+  "properties": {
+    "schema_version": { "const": "0.1" },
+    "id": { "type": "string" },
+    "conversation_id": { "type": "string" },
+    "run_id": { "type": ["string", "null"] },
+    "action_type": { "type": "string" },
+    "payload": { "type": "object" },
+    "state": {
+      "enum": [
+        "proposed",
+        "policy_evaluating",
+        "blocked",
+        "awaiting_confirmation",
+        "editing",
+        "auto_applying",
+        "applying",
+        "applied",
+        "failed",
+        "retrying",
+        "cancelled",
+        "expired",
+        "blocked_plugin_disabled",
+        "archived",
+        "undoing",
+        "undone",
+        "undo_failed"
+      ]
+    },
+    "execution_mode": {
+      "enum": ["read_only", "confirm_each", "auto_apply_allowlist"]
+    },
+    "idempotency_key": { "type": "string" },
+    "policy_decision": { "type": ["object", "null"] },
+    "result": { "type": ["object", "null"] },
+    "plugin_id": { "type": ["string", "null"] },
+    "created_at": { "type": "string", "format": "date-time" },
+    "updated_at": { "type": "string", "format": "date-time" }
+  },
+  "additionalProperties": false
+}

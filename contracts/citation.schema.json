@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://framed-assistant.dev/schemas/citation-0.1.json",
+  "title": "Citation",
+  "type": "object",
+  "required": ["title", "document_id"],
+  "properties": {
+    "title": { "type": "string" },
+    "document_id": { "type": "string" },
+    "source_url": { "type": ["string", "null"], "format": "uri" }
+  },
+  "additionalProperties": false
+}

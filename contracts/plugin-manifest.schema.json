@@ -1,0 +1,37 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://framed-assistant.dev/schemas/plugin-manifest-0.1.json",
+  "title": "PluginManifest",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "id",
+    "name",
+    "version",
+    "protocol_range",
+    "data_schema_version",
+    "capabilities",
+    "permissions",
+    "tools",
+    "actions",
+    "renderers",
+    "privacy_resources",
+    "configuration_schema"
+  ],
+  "properties": {
+    "schema_version": { "const": "0.1" },
+    "id": { "type": "string" },
+    "name": { "type": "string" },
+    "version": { "type": "string" },
+    "protocol_range": { "type": "string" },
+    "data_schema_version": { "type": "string" },
+    "capabilities": { "type": "array", "items": { "type": "string" } },
+    "permissions": { "type": "array", "items": { "type": "string" } },
+    "tools": { "type": "array", "items": { "type": "string" } },
+    "actions": { "type": "array", "items": { "type": "string" } },
+    "renderers": { "type": "array", "items": { "type": "string" } },
+    "privacy_resources": { "type": "array", "items": { "type": "string" } },
+    "configuration_schema": { "type": "string" }
+  },
+  "additionalProperties": false
+}

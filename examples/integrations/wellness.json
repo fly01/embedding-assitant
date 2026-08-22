@@ -1,0 +1,26 @@
+{
+  "schema_version": "0.1",
+  "application": {
+    "id": "org.example.wellness",
+    "conversation_mode": "single",
+    "context_profile": "durable"
+  },
+  "context_sources": [
+    { "id": "current_day", "source": "page_state", "fields": ["selected_date"] }
+  ],
+  "tools": [
+    {
+      "id": "list_entries",
+      "source": "openapi",
+      "permission": "wellness.entries.read"
+    }
+  ],
+  "actions": [
+    {
+      "id": "create_entry",
+      "source": "openapi",
+      "permission": "wellness.entries.write-proposal"
+    }
+  ],
+  "review_status": "approved"
+}

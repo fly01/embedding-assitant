@@ -6,9 +6,9 @@ It combines a shared runtime protocol, host-controlled tools and actions, a Head
 
 ## Project status
 
-**Specification-first, pre-alpha.**
+**Runnable reference MVP, pre-alpha.**
 
-The MVP architecture and public contracts are defined, but installable runtime and UI packages have not been released yet. The current repository is intended for specification review, module ownership, and implementation planning.
+The repository now includes the versioned JSON contracts, a FastAPI/SQLite reference Runtime, a Vue 3 Headless/default client, a reference Host, Mock and OpenAI-compatible model adapters, and real browser E2E coverage. The package is suitable for evaluation and contribution, not yet for a production deployment.
 
 See the [MVP specification](docs/mvp-spec.md) for normative requirements and [DESIGN.md](DESIGN.md) for the UI and interaction contract.
 
@@ -65,6 +65,38 @@ Host Adapter ── Framed Assistant protocol ── Headless SDK ── Default
 ```
 
 The JSON Schema event protocol is the cross-language source of truth. The MVP reference implementation targets a Python/FastAPI runtime and a Vue 3/TypeScript web client while keeping the protocol portable to other clients.
+
+## Quick start
+
+Requirements: Python 3.11+, [uv](https://docs.astral.sh/uv/), Node.js, and npm.
+
+```bash
+uv sync
+npm install
+```
+
+Start the API and reference Host in separate terminals:
+
+```bash
+.venv/bin/uvicorn framed_assistant.app:app --reload --port 8000
+npm run dev --workspace frontend -- --host 127.0.0.1 --port 5173
+```
+
+Open `http://127.0.0.1:5173`. The reference Host uses explicit `X-Actor-ID` and `X-Scope-Key` headers and the credential-free Mock Provider by default.
+
+To use an OpenAI-compatible Chat Completions endpoint:
+
+```bash
+FRAMED_PROVIDER=openai-compatible \
+OPENAI_API_KEY=... \
+OPENAI_BASE_URL=https://api.openai.com/v1 \
+OPENAI_MODEL=gpt-4.1-mini \
+.venv/bin/uvicorn framed_assistant.app:app --port 8000
+```
+
+The Mock Provider exposes deterministic reference prompts used by the E2E suite, including `Create record: Title | 12.50`, `List records`, `Calculate: 2 + 3`, and `Search knowledge: query`.
+
+Set `FRAMED_CONVERSATION_MODE=single` when a Host scope must expose only one active Conversation. The reference Host defaults to `multiple` and owns its Conversation navigation outside the assistant shell.
 
 ## MVP scope
 
@@ -204,32 +236,52 @@ Security-sensitive behavior is defined normatively in the [Security and privacy 
 .
 ├── README.md
 ├── DESIGN.md
+├── pyproject.toml
+├── package.json
+├── contracts/               # Canonical JSON Schemas and fixtures
+├── backend/framed_assistant # Runtime, adapters, tools, policies, and APIs
+├── frontend/src             # Headless store and Vue default/reference UI
+├── e2e/                     # Real browser and public HTTP flows
+├── tests/                   # Focused contract verification
 ├── docs/
 │   └── mvp-spec.md
 └── scripts/
     └── check_public_docs.py
 ```
 
-The implementation workspace will follow the module boundaries in the specification rather than a single monolithic package.
+Runtime modules depend on public contracts and explicit Host boundaries; the reference Host remains separate from assistant UI state.
 
 ## Documentation
 
 - [MVP specification](docs/mvp-spec.md) — normative architecture, contracts, modules, security, conformance, and acceptance criteria.
 - [Design contract](DESIGN.md) — product principles, default UI, interaction states, accessibility, responsive behavior, and visual constraints.
 
-Validate public documentation locally:
+## Testing
+
+The primary verification path is the Playwright E2E suite. It starts the real FastAPI server and Vue client and covers streaming, Host-owned Conversation switching, attachments/Lightbox, both voice modes, confirmed and automatic Actions, Privacy, Context, Retrieval, Integration Generator, and Plugin disable/re-enable.
 
 ```bash
+PLAYWRIGHT_BROWSERS_PATH=.data/playwright npx playwright install chromium
+npm run test:e2e
+```
+
+Run the smaller contract, static, and build gates:
+
+```bash
+framed-conformance
+.venv/bin/python -m pytest
+.venv/bin/ruff check backend tests
+.venv/bin/ruff format --check backend tests
+npm run typecheck
+npm run build
 python3 scripts/check_public_docs.py
 ```
 
-The check rejects local filesystem references, broken local links, malformed Markdown fences, missing public sections, and accidental removal of core MVP requirements.
-
-This script validates publication hygiene for the current documents only. It is not the M0 protocol conformance suite described in the specification.
+`framed-conformance` validates canonical schemas and explicit valid/invalid fixtures. `check_public_docs.py` separately validates publication hygiene and preservation of accepted product requirements.
 
 ## Contributing
 
-The project is currently accepting specification and architecture contributions.
+The project accepts implementation, test, specification, and design contributions.
 
 Before proposing an implementation change:
 
@@ -237,8 +289,8 @@ Before proposing an implementation change:
 2. Preserve the Host Adapter authority boundary.
 3. Add or update public schemas and conformance fixtures before implementation.
 4. Keep domain-specific fields in Host Integration Manifests or optional plugins rather than core contracts.
-5. Include unit tests, conformance tests, and failure-path coverage.
-6. Run `python3 scripts/check_public_docs.py` for documentation changes.
+5. Prefer a real public-API or browser E2E scenario; add a smaller test only when it proves a contract that E2E cannot isolate clearly.
+6. Run the relevant commands from the Testing section.
 
 Breaking protocol changes require an explicit schema-version proposal and migration plan.
 

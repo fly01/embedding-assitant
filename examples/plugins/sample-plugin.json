@@ -1,0 +1,15 @@
+{
+  "schema_version": "0.1",
+  "id": "sample.records",
+  "name": "Sample Records Plugin",
+  "version": "0.1.0",
+  "protocol_range": ">=0.1.0 <0.2.0",
+  "data_schema_version": "1",
+  "capabilities": ["records.read", "records.propose"],
+  "permissions": ["host.records.read", "host.records.write-proposal"],
+  "tools": ["sample.records.lookup"],
+  "actions": ["sample.records.create"],
+  "renderers": ["sample.records.action"],
+  "privacy_resources": ["sample.records.cache"],
+  "configuration_schema": "schemas/sample-records.json"
+}

@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://framed-assistant.dev/schemas/host-integration-manifest-0.1.json",
+  "title": "HostIntegrationManifest",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "application",
+    "context_sources",
+    "tools",
+    "actions",
+    "review_status"
+  ],
+  "properties": {
+    "schema_version": { "const": "0.1" },
+    "application": {
+      "type": "object",
+      "required": ["id", "conversation_mode", "context_profile"],
+      "properties": {
+        "id": { "type": "string" },
+        "conversation_mode": { "enum": ["single", "multiple"] },
+        "context_profile": { "enum": ["lite", "balanced", "durable"] }
+      },
+      "additionalProperties": false
+    },
+    "context_sources": { "type": "array", "items": { "type": "object" } },
+    "tools": { "type": "array", "items": { "type": "object" } },
+    "actions": { "type": "array", "items": { "type": "object" } },
+    "review_status": { "enum": ["draft", "approved", "blocked"] }
+  },
+  "additionalProperties": false
+}

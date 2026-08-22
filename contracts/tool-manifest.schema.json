@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://framed-assistant.dev/schemas/tool-manifest-0.1.json",
+  "title": "ToolManifest",
+  "type": "object",
+  "required": [
+    "name",
+    "version",
+    "input_schema",
+    "output_schema",
+    "side_effect",
+    "risk",
+    "permissions",
+    "timeout_ms",
+    "retry",
+    "confirmation",
+    "idempotency",
+    "redaction"
+  ],
+  "properties": {
+    "name": { "type": "string" },
+    "version": { "type": "string" },
+    "input_schema": { "type": "object" },
+    "output_schema": { "type": "object" },
+    "side_effect": {
+      "enum": ["none", "read", "write-proposal", "external-read", "dangerous"]
+    },
+    "risk": { "enum": ["low", "medium", "high"] },
+    "permissions": { "type": "array", "items": { "type": "string" } },
+    "timeout_ms": { "type": "integer", "minimum": 1 },
+    "retry": { "type": "object" },
+    "confirmation": {
+      "enum": ["none", "policy", "explicit", "typed", "host-only"]
+    },
+    "auto_apply_eligible": { "type": "boolean" },
+    "idempotency": {
+      "enum": ["not-applicable", "run-scoped", "host-required"]
+    },
+    "ui_renderer_key": { "type": "string" },
+    "redaction": { "type": "object" }
+  },
+  "additionalProperties": false
+}

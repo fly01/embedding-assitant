@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://framed-assistant.dev/schemas/assistant-event-0.1.json",
+  "title": "AssistantEvent",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "event_id",
+    "scope",
+    "seq",
+    "type",
+    "created_at",
+    "payload"
+  ],
+  "properties": {
+    "schema_version": { "const": "0.1" },
+    "event_id": { "type": "string", "minLength": 1 },
+    "scope": {
+      "type": "object",
+      "required": ["kind", "id"],
+      "properties": {
+        "kind": {
+          "enum": [
+            "run",
+            "conversation",
+            "attachment",
+            "privacy_job",
+            "composer"
+          ]
+        },
+        "id": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": false
+    },
+    "seq": { "type": "integer", "minimum": 1 },
+    "conversation_id": { "type": "string" },
+    "run_id": { "type": "string" },
+    "type": { "type": "string", "minLength": 1 },
+    "created_at": { "type": "string", "format": "date-time" },
+    "payload": { "type": "object" }
+  },
+  "additionalProperties": false
+}

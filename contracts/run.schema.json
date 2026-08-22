@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://framed-assistant.dev/schemas/run-0.1.json",
+  "title": "Run",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "id",
+    "conversation_id",
+    "input_message_id",
+    "status",
+    "provider",
+    "usage",
+    "created_at"
+  ],
+  "properties": {
+    "schema_version": { "const": "0.1" },
+    "id": { "type": "string" },
+    "conversation_id": { "type": "string" },
+    "input_message_id": { "type": "string" },
+    "status": {
+      "enum": [
+        "queued",
+        "running",
+        "completed",
+        "interrupted",
+        "failed",
+        "cancelled"
+      ]
+    },
+    "provider": { "type": "string" },
+    "usage": {
+      "type": "object",
+      "additionalProperties": { "type": "integer", "minimum": 0 }
+    },
+    "created_at": { "type": "string", "format": "date-time" },
+    "completed_at": { "type": ["string", "null"], "format": "date-time" }
+  },
+  "additionalProperties": false
+}

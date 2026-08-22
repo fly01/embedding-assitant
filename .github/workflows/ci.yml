@@ -1,0 +1,30 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - run: uv sync --frozen
+      - run: npm ci
+      - run: PLAYWRIGHT_BROWSERS_PATH=.data/playwright npx playwright install --with-deps chromium
+      - run: uv run framed-conformance
+      - run: uv run pytest
+      - run: uv run ruff check backend tests
+      - run: uv run ruff format --check backend tests
+      - run: npm run format:check
+      - run: npm run typecheck
+      - run: npm run build
+      - run: python3 scripts/check_public_docs.py
+      - run: npm run test:e2e

@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://framed-assistant.dev/schemas/error-0.1.json",
+  "title": "PublicError",
+  "type": "object",
+  "required": ["code", "message", "retryable", "correlation_id"],
+  "properties": {
+    "code": { "type": "string" },
+    "message": { "type": "string" },
+    "retryable": { "type": "boolean" },
+    "correlation_id": { "type": "string" }
+  },
+  "additionalProperties": false
+}

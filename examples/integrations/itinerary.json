@@ -1,0 +1,22 @@
+{
+  "schema_version": "0.1",
+  "application": {
+    "id": "org.example.itinerary",
+    "conversation_mode": "multiple",
+    "context_profile": "balanced"
+  },
+  "context_sources": [
+    { "id": "active_trip", "source": "page_state", "fields": ["trip_id"] }
+  ],
+  "tools": [
+    { "id": "list_trip_items", "source": "openapi", "permission": "trips.read" }
+  ],
+  "actions": [
+    {
+      "id": "update_trip_item",
+      "source": "openapi",
+      "permission": "trips.write-proposal"
+    }
+  ],
+  "review_status": "approved"
+}

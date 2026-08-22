@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://framed-assistant.dev/schemas/attachment-0.1.json",
+  "title": "AttachmentAsset",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "id",
+    "owner_scope",
+    "kind",
+    "name",
+    "mime_type",
+    "size_bytes",
+    "source",
+    "upload_status",
+    "processing_status",
+    "retention_policy",
+    "permission_scope",
+    "created_at"
+  ],
+  "properties": {
+    "schema_version": { "const": "0.1" },
+    "id": { "type": "string" },
+    "conversation_id": { "type": ["string", "null"] },
+    "owner_scope": { "type": "string" },
+    "kind": {
+      "enum": [
+        "image",
+        "document",
+        "spreadsheet",
+        "text",
+        "audio",
+        "archive",
+        "unknown"
+      ]
+    },
+    "name": { "type": "string" },
+    "mime_type": { "type": "string" },
+    "size_bytes": { "type": "integer", "minimum": 0 },
+    "source": { "enum": ["picker", "camera", "paste", "drag_drop", "voice"] },
+    "upload_status": { "enum": ["local", "uploading", "uploaded", "failed"] },
+    "processing_status": {
+      "enum": [
+        "none",
+        "queued",
+        "processing",
+        "ready",
+        "partial",
+        "failed",
+        "unsupported",
+        "blocked"
+      ]
+    },
+    "retention_policy": { "type": "string" },
+    "permission_scope": { "type": "string" },
+    "metadata": { "type": "object" },
+    "created_at": { "type": "string", "format": "date-time" }
+  },
+  "additionalProperties": false
+}

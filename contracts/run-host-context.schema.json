@@ -3,7 +3,13 @@
   "$id": "https://framed-assistant.dev/schemas/run-host-context-0.1.json",
   "title": "RunHostContext",
   "type": "object",
-  "required": ["schema_version", "actor_id", "scope_key", "denied_permissions", "page_context"],
+  "required": [
+    "schema_version",
+    "actor_id",
+    "scope_key",
+    "denied_permissions",
+    "page_context"
+  ],
   "properties": {
     "schema_version": { "const": "0.1" },
     "actor_id": { "type": "string", "minLength": 1 },

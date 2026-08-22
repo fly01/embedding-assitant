@@ -2,10 +2,7 @@
 import { computed, onMounted, watch, type Component } from "vue";
 import type { AssistantApi } from "../api";
 import type { DictationAdapter } from "../dictation";
-import {
-  DEFAULT_ASSISTANT_LABELS,
-  type AssistantLabels,
-} from "../labels";
+import { DEFAULT_ASSISTANT_LABELS, type AssistantLabels } from "../labels";
 import { createAssistantStore } from "../store";
 import Composer from "./Composer.vue";
 import ConversationThread from "./ConversationThread.vue";

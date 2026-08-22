@@ -1,9 +1,6 @@
 export { AssistantApi, ApiError } from "./api";
 export { DemoDictationAdapter, type DictationAdapter } from "./dictation";
-export {
-  DEFAULT_ASSISTANT_LABELS,
-  type AssistantLabels,
-} from "./labels";
+export { DEFAULT_ASSISTANT_LABELS, type AssistantLabels } from "./labels";
 export { createAssistantStore, type AssistantStore } from "./store";
 export * from "./types";
 
